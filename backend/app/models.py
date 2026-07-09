@@ -328,6 +328,11 @@ class Task(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     source: Mapped[TaskSource] = mapped_column(Enum(TaskSource))
     priority_score: Mapped[float] = mapped_column(Float, default=0.0)  # 0-100, higher = more urgent
+    priority_reason_type: Mapped[str] = mapped_column(String(60), default="")
+    priority_reason: Mapped[str] = mapped_column(Text, default="")
+    prioritized_by: Mapped[str] = mapped_column(String(40), default="")
+    prioritization_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    prioritized_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.PENDING)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     due_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)

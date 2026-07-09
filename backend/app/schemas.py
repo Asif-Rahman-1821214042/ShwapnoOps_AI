@@ -266,6 +266,11 @@ class TaskOut(BaseModel):
     description: str
     source: TaskSource
     priority_score: float
+    priority_reason_type: str
+    priority_reason: str
+    prioritized_by: str
+    prioritization_model: str | None
+    prioritized_at: dt.datetime | None
     status: TaskStatus
     created_at: dt.datetime
     due_at: dt.datetime | None

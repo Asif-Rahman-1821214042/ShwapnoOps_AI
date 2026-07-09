@@ -13,6 +13,27 @@ from app.models import (
 from app.services.business_calendar import business_calendar_context
 from app.services.prioritization import ScoringInput, hours_between, score_task
 
+REASON_TYPES = {
+    "stock_out_risk",
+    "workload_overload",
+    "customer_complaint",
+    "delivery_delay",
+    "audit_issue",
+    "promotion_risk",
+    "operational_issue",
+}
+
+
+def _fallback_reason_type(task: Task) -> str:
+    return {
+        TaskSource.STOCK: "stock_out_risk",
+        TaskSource.MANPOWER: "workload_overload",
+        TaskSource.COMPLAINT: "customer_complaint",
+        TaskSource.AUDIT: "audit_issue",
+        TaskSource.PROMOTION: "promotion_risk",
+        TaskSource.MANUAL: "operational_issue",
+    }.get(task.source, "operational_issue")
+
 
 def _source_severity(task: Task) -> int:
     return {
@@ -71,7 +92,13 @@ async def _gemini_rank_tasks(tasks: list[Task], local_rows: list[dict], context:
         "You are Gemini ranking an operations task queue for a Shwapno retail outlet manager. "
         "Use only the JSON context. Rank the provided existing task IDs; do not create new tasks. "
         "Return strict JSON only, no markdown, in this shape: "
-        "{\"tasks\":[{\"id\":123,\"score\":87.5,\"reason\":\"short operational reason\"}]}. "
+        "{\"tasks\":[{\"id\":123,\"score\":87.5,\"reason_type\":\"stock_out_risk\","
+        "\"reason\":\"Vegetable stock has 0.4 days of cover: 6 units on hand versus 14.9 average daily sales.\"}]}. "
+        "reason_type must be exactly one of: stock_out_risk, workload_overload, customer_complaint, "
+        "delivery_delay, audit_issue, promotion_risk, operational_issue. "
+        "Every reason must state the actual root cause and cite concrete evidence from the JSON, such as "
+        "days of cover, units on hand, staffing coverage, footfall, complaint severity, delivery status, "
+        "audit score, alert severity, or deadline. Do not write vague reasons and do not invent evidence. "
         "Scores must be numbers from 0 to 100. Higher score means the task should appear earlier. "
         "Consider stock-out risk, manpower coverage, complaints, alerts, delayed deliveries, audits, "
         "manual issues, current date/time, and festival context.\n\n"
@@ -106,6 +133,11 @@ async def _gemini_rank_tasks(tasks: list[Task], local_rows: list[dict], context:
         ranked.append({
             "id": task_id,
             "score": round(min(100.0, max(0.0, score)), 1),
+            "reason_type": (
+                str(row.get("reason_type", "")).strip().lower()
+                if str(row.get("reason_type", "")).strip().lower() in REASON_TYPES
+                else "operational_issue"
+            ),
             "reason": str(row.get("reason", ""))[:240],
         })
         seen.add(task_id)
@@ -175,6 +207,9 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
         "open_complaints": len(complaints),
         "critical_alerts": critical_alert_count,
         "delayed_deliveries": delayed_delivery_count,
+        "pending_tasks": len(tasks),
+        "overdue_tasks": sum(1 for task in tasks if task.due_at and task.due_at < now),
+        "peak_hour_footfall": max_footfall,
         "active_festival_in_7_days": bool(calendar.next_festival),
     }
     gemini_context = {
@@ -252,29 +287,78 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
         severity = _source_severity(task)
         revenue_at_risk = 8000.0
         hours_to_deadline = hours_between(now, task.due_at)
+        reason_type = _fallback_reason_type(task)
+        reason = f"{task.source.value.title()} task ranked from its deadline and current operational impact."
 
         if task.source == TaskSource.STOCK:
+            matched = next(
+                (
+                    (item, days) for item, days in risky_items
+                    if item.sku in task.title or item.sku in task.description
+                ),
+                None,
+            )
             severity = 5 if (min_days_cover is not None and min_days_cover <= 1) else 4
             revenue_at_risk = max_stock_revenue * festival_multiplier
             if min_days_cover is not None:
                 hours_to_deadline = min(hours_to_deadline or 72, max(min_days_cover * 24, 1))
+            if matched:
+                item, days = matched
+                reason = (
+                    f"{item.sku} has {round(days, 1) if days is not None else 'unknown'} days of cover: "
+                    f"{item.on_hand_units} units on hand versus {item.avg_daily_sales} average daily sales."
+                )
+                delayed = next(
+                    (
+                        delivery for delivery in deliveries
+                        if delivery.sku == item.sku and delivery.status == DeliveryStatus.DELAYED
+                    ),
+                    None,
+                )
+                if delayed:
+                    reason_type = "delivery_delay"
+                    reason += f" Its delivery scheduled for {delayed.scheduled_date} is delayed."
         elif task.source == TaskSource.MANPOWER:
             severity = 5 if lowest_coverage < 0.7 else 4
             revenue_at_risk = max_footfall * 150 * festival_multiplier
             hours_to_deadline = min(hours_to_deadline or 8, 4)
+            reason = (
+                f"Workload pressure: lowest staffing coverage is {round(lowest_coverage * 100, 1)}% "
+                f"while forecast peak footfall reaches {max_footfall} customers."
+            )
         elif task.source == TaskSource.COMPLAINT:
             severity = max_complaint_severity
             revenue_at_risk = len(complaints) * 5000
             hours_to_deadline = min(hours_to_deadline or 12, 8)
+            reason = (
+                f"Customer issue pressure: {len(complaints)} complaints are open and the "
+                f"highest severity is {max_complaint_severity}/5."
+            )
         elif task.source == TaskSource.AUDIT:
             severity = 4 if latest_audit_score < 85 else 3
             revenue_at_risk = 12000 + (5000 if critical_alert_count else 0)
+            reason = (
+                f"Audit follow-up: latest audit score is {latest_audit_score}% with "
+                f"{critical_alert_count} active critical alerts."
+            )
         elif task.source == TaskSource.PROMOTION:
             severity = 4 if calendar.next_festival else 3
             revenue_at_risk = 22000 * festival_multiplier
+            reason = (
+                "Promotion readiness requires review"
+                + (
+                    f" before {calendar.next_festival.name}."
+                    if calendar.next_festival else
+                    "; no festival is scheduled in the next 7 days, so urgency is lower."
+                )
+            )
         elif task.source == TaskSource.MANUAL:
             severity = max_manual_severity
             revenue_at_risk = 10000 + delayed_delivery_count * 5000
+            reason = (
+                f"Operational issue: maximum open manual-issue severity is {max_manual_severity}/5 "
+                f"and {delayed_delivery_count} deliveries are delayed."
+            )
 
         if critical_alert_count:
             severity = min(5, severity + 1)
@@ -298,10 +382,20 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
             "old_score": old_score,
             "new_score": task.priority_score,
             "source": task.source.value,
-            "reason": "Local operational scoring fallback.",
+            "reason_type": reason_type,
+            "reason": reason[:240],
         })
 
     generated_by = "local_rules"
+    for task in tasks:
+        local_row = next((row for row in updated if row["id"] == task.id), None)
+        if task.prioritized_by != "gemini" or not task.priority_reason:
+            task.priority_reason_type = local_row["reason_type"] if local_row else _fallback_reason_type(task)
+            task.priority_reason = local_row["reason"] if local_row else "Ranked from current operational signals."
+            task.prioritized_by = generated_by
+            task.prioritization_model = None
+            task.prioritized_at = now
+
     gemini_ranking = await _gemini_rank_tasks(tasks, updated, gemini_context)
     gemini_error = None
     if gemini_ranking and gemini_ranking.get("tasks"):
@@ -313,8 +407,13 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
             if not task or not local_row:
                 continue
             task.priority_score = row["score"]
+            task.priority_reason_type = row["reason_type"]
+            task.priority_reason = row["reason"] or "Gemini-ranked from live operational context."
+            task.prioritized_by = "gemini"
+            task.prioritization_model = gemini_ranking["model"]
+            task.prioritized_at = now
             local_row["new_score"] = row["score"]
-            local_row["reason"] = row["reason"] or "Gemini-ranked from live operational context."
+            local_row["reason"] = task.priority_reason
         generated_by = "gemini"
     elif gemini_ranking:
         gemini_error = gemini_ranking.get("error")

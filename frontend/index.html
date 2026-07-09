@@ -119,6 +119,8 @@
   }
   .task-card .title{font-size:13.5px; font-weight:500;}
   .task-card .meta{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--text-lo); text-transform:uppercase; letter-spacing:.06em; margin-top:3px;}
+  .task-reason{margin-top:7px;color:#475467;font-size:12px;line-height:1.4;}
+  .task-reason-label{display:inline-flex;margin-right:6px;padding:2px 6px;border-radius:999px;background:#EEF4FF;color:#175CD3;font:700 9px 'IBM Plex Mono',monospace;text-transform:uppercase;}
   .task-card button{
     background:transparent; border:1px solid var(--line); color:var(--paper);
     border-radius:6px; padding:6px 10px; font-size:11px; cursor:pointer; font-family:'IBM Plex Mono';
@@ -1055,6 +1057,11 @@ async function loadTasks(){
       <div>
         <div class="title">${escapeHtml(t.title)}</div>
         <div class="meta">${t.source} · ${t.due_at ? 'due ' + timeAgo(t.due_at) : 'no deadline'}</div>
+        <div class="task-reason">
+          <span class="task-reason-label">${escapeHtml((t.priority_reason_type || (t.prioritized_by === 'gemini' ? 'AI reason' : 'Priority reason')).replaceAll('_',' '))}</span>
+          ${escapeHtml(t.priority_reason || 'Run “Prioritize queue” to generate an AI explanation.')}
+          ${t.prioritization_model ? `<span class="meta"> · ${escapeHtml(t.prioritization_model)}</span>` : ''}
+        </div>
       </div>
       <button onclick="completeTask(${t.id})">Mark done</button>
     </div>`;

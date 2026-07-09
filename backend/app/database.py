@@ -49,3 +49,25 @@ async def init_db():
                 )
 
         await conn.run_sync(add_category_foreign_keys)
+
+        def add_task_explanation_columns(sync_conn):
+            from sqlalchemy import inspect
+
+            columns = {
+                column["name"]
+                for column in inspect(sync_conn).get_columns("tasks")
+            }
+            additions = {
+                "priority_reason_type": "VARCHAR(60) NOT NULL DEFAULT ''",
+                "priority_reason": "TEXT NOT NULL DEFAULT ''",
+                "prioritized_by": "VARCHAR(40) NOT NULL DEFAULT ''",
+                "prioritization_model": "VARCHAR(120)",
+                "prioritized_at": "DATETIME",
+            }
+            for name, definition in additions.items():
+                if name not in columns:
+                    sync_conn.exec_driver_sql(
+                        f"ALTER TABLE tasks ADD COLUMN {name} {definition}"
+                    )
+
+        await conn.run_sync(add_task_explanation_columns)
