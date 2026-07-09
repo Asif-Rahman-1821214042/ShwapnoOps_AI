@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShwapnoOps AI - Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#F7F9F3;
+    --panel:#fff;
+    --text:#17201C;
+    --muted:#667085;
+    --line:rgba(23,32,28,.11);
+    --blue:#175CD3;
+    --green:#15803D;
+    --amber:#D97706;
+    --red:#B42318;
+    --shadow:0 14px 40px rgba(23,32,28,.08);
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:linear-gradient(180deg,#F7F9F3 0%,#EEF2EA 100%);
+    color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif;
+  }
+  header{
+    position:sticky;
+    top:0;
+    z-index:10;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:14px;
+    padding:18px 28px;
+    background:rgba(255,255,255,.9);
+    border-bottom:1px solid var(--line);
+    backdrop-filter:blur(6px);
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .mark{
+    width:34px;
+    height:34px;
+    border-radius:9px;
+    background:linear-gradient(135deg,#E31B23 0 48%,#F9B233 48% 72%,#128A43 72%);
+  }
+  h1{margin:0; font-size:18px;}
+  small,.eyebrow{color:var(--muted);}
+  .eyebrow{
+    display:block;
+    font:700 10.5px 'IBM Plex Mono',monospace;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+  }
+  .controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  select,.api-box{
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:8px;
+    padding:9px 10px;
+    color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif;
+  }
+  .nav-link,.refresh-btn{
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:9px 11px;
+    background:#fff;
+    color:#344054;
+    text-decoration:none;
+    font:700 10.5px 'IBM Plex Mono',monospace;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+  .refresh-btn{background:var(--blue); color:#fff; border-color:var(--blue);}
+  main{max-width:1560px; margin:0 auto; padding:24px 28px 60px;}
+  .summary{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:14px;
+    margin-bottom:18px;
+  }
+  .metric,.panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    box-shadow:var(--shadow);
+  }
+  .metric{padding:16px 18px;}
+  .metric strong{display:block; margin-top:8px; font-size:24px;}
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:18px;
+  }
+  .panel{padding:16px 18px;}
+  .panel-title{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    padding-bottom:12px;
+    margin-bottom:14px;
+    border-bottom:1px solid var(--line);
+    color:var(--muted);
+    font:700 11px 'IBM Plex Mono',monospace;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+  }
+  .chart-wrap{height:300px;}
+  .chart-wrap.tall{height:360px;}
+  .native-chart{
+    width:100%;
+    height:100%;
+    min-height:260px;
+  }
+  .native-chart svg{
+    width:100%;
+    height:100%;
+    display:block;
+  }
+  .chart-empty{
+    height:100%;
+    min-height:220px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--muted);
+    border:1px dashed var(--line);
+    border-radius:8px;
+    font:700 11px 'IBM Plex Mono',monospace;
+    text-transform:uppercase;
+  }
+  .status{
+    display:inline-flex;
+    border-radius:999px;
+    padding:3px 8px;
+    background:#F2F4F7;
+    color:#475467;
+    font:700 10px 'IBM Plex Mono',monospace;
+    text-transform:uppercase;
+  }
+  .page-status{
+    margin-bottom:14px;
+    padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:#fff;
+    color:var(--muted);
+    font:700 11px 'IBM Plex Mono',monospace;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+  }
+  .page-status.error{
+    background:#FEF3F2;
+    color:var(--red);
+    border-color:#FECDCA;
+  }
+  .analytics-toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    margin-bottom:18px;
+    padding:12px 14px;
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:10px;
+    box-shadow:0 5px 18px rgba(23,32,28,.05);
+  }
+  .toolbar-group{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .toolbar-label{color:var(--muted);font:700 10.5px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.06em;}
+  .analytics-toolbar select{padding:7px 9px;font-size:12px;}
+  .panel{border-radius:12px;transition:transform .18s ease,box-shadow .18s ease;}
+  .panel:hover{transform:translateY(-2px);box-shadow:0 18px 42px rgba(23,32,28,.11);}
+  .native-chart rect,.native-chart circle{transition:opacity .15s ease,filter .15s ease;}
+  .native-chart rect:hover,.native-chart circle:hover{opacity:.78;filter:brightness(.94);cursor:crosshair;}
+  .chart-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;color:var(--muted);font:600 10.5px 'IBM Plex Mono',monospace;}
+  .chart-help{color:var(--muted);font-size:11px;}
+  .grid.focused{grid-template-columns:1fr;}
+  .grid.focused .panel{display:none;}
+  .grid.focused .panel.active-chart{display:block;}
+  .grid.focused .chart-wrap{height:440px;}
+  .grid.focused .native-chart{max-width:1200px;margin:0 auto;}
+  @media(max-width:1000px){
+    header{align-items:flex-start; flex-direction:column;}
+    .summary,.grid{grid-template-columns:1fr;}
+    main{padding:18px 14px 48px;}
+    .analytics-toolbar{align-items:flex-start;flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="mark"></div>
+    <div>
+      <h1>Analytics & Insights</h1>
+      <small>Separate graph page for outlet performance analysis</small>
+    </div>
+  </div>
+  <div class="controls">
+    <a class="nav-link" href="/">Dashboard</a>
+    <a class="nav-link" href="/data-tables.html?view=categories">Data Tables</a>
+    <select id="outletSelect"></select>
+    <button class="refresh-btn" id="refreshBtn">Refresh</button>
+    <input class="api-box" id="apiBase" />
+  </div>
+</header>
+
+<main>
+  <div class="page-status" id="pageStatus">Loading analytics graphs...</div>
+  <div class="analytics-toolbar">
+    <div class="toolbar-group">
+      <span class="toolbar-label">Trend period</span>
+      <select id="trendDays">
+        <option value="7">7 days</option>
+        <option value="14" selected>14 days</option>
+        <option value="30">30 days</option>
+        <option value="60">60 days</option>
+      </select>
+      <span class="toolbar-label">Category measure</span>
+      <select id="categoryMetric">
+        <option value="revenue" selected>Revenue (BDT)</option>
+        <option value="units">Units sold</option>
+      </select>
+      <span class="toolbar-label">Choose graph</span>
+      <select id="chartView">
+        <option value="categoryToday">Category Sales Today</option>
+        <option value="categoryMonth">Category Sales This Month</option>
+        <option value="categoryYear">Category Sales This Year</option>
+        <option value="sales">Sales & Footfall Trend</option>
+        <option value="target">Target Achievement</option>
+        <option value="stock">Stock Risk</option>
+        <option value="forecast">Demand Forecast Gap</option>
+        <option value="manpower">Manpower Coverage</option>
+        <option value="complaints">Complaints</option>
+        <option value="alerts">Active Alerts</option>
+        <option value="operations">Campaigns & Deliveries</option>
+        <option value="audit">AI Recommendation Audit</option>
+        <option value="weather">Weather Demand Signal</option>
+      </select>
+    </div>
+    <span class="chart-help">Hover over a bar or point to see its exact value.</span>
+  </div>
+  <div class="summary">
+    <div class="metric"><span class="eyebrow">Monthly Target</span><strong id="mTarget">--</strong><small id="mTargetSub">--</small></div>
+    <div class="metric"><span class="eyebrow">Weekly Target</span><strong id="wTarget">--</strong><small id="wTargetSub">--</small></div>
+    <div class="metric"><span class="eyebrow">Daily Target</span><strong id="dTarget">--</strong><small id="dTargetSub">--</small></div>
+    <div class="metric"><span class="eyebrow">Forecast Risk</span><strong id="riskSummary">--</strong><small id="riskSub">--</small></div>
+  </div>
+
+  <div class="grid focused" id="analyticsGrid">
+    <div class="panel" data-chart="categoryToday">
+      <div class="panel-title"><span>Category Sales Today</span><span class="status categoryMeasureLabel">Revenue · BDT</span></div>
+      <div class="chart-wrap tall"><div class="native-chart" id="categoryTodayChart"></div></div>
+    </div>
+    <div class="panel" data-chart="categoryMonth">
+      <div class="panel-title"><span>Category Sales This Month</span><span class="status categoryMeasureLabel">Revenue · BDT</span></div>
+      <div class="chart-wrap tall"><div class="native-chart" id="categoryMonthChart"></div></div>
+    </div>
+    <div class="panel" data-chart="categoryYear">
+      <div class="panel-title"><span>Category Sales This Year</span><span class="status categoryMeasureLabel">Revenue · BDT</span></div>
+      <div class="chart-wrap tall"><div class="native-chart" id="categoryYearChart"></div></div>
+    </div>
+    <div class="panel" data-chart="sales">
+      <div class="panel-title"><span>Sales And Footfall Trend</span><span class="status" id="trendPeriodLabel">14 days</span></div>
+      <div class="chart-wrap tall"><div class="native-chart" id="salesChart"></div></div>
+    </div>
+    <div class="panel" data-chart="target">
+      <div class="panel-title"><span>Target Achievement</span><span class="status">month/week/day</span></div>
+      <div class="chart-wrap tall"><div class="native-chart" id="targetChart"></div></div>
+    </div>
+    <div class="panel" data-chart="stock">
+      <div class="panel-title"><span>Stock Risk By SKU</span><span class="status">days cover</span></div>
+      <div class="chart-wrap"><div class="native-chart" id="stockChart"></div></div>
+    </div>
+    <div class="panel" data-chart="forecast">
+      <div class="panel-title"><span>Demand Forecast Gap</span><span class="status">model</span></div>
+      <div class="chart-wrap"><div class="native-chart" id="forecastChart"></div></div>
+    </div>
+    <div class="panel" data-chart="manpower">
+      <div class="panel-title"><span>Manpower Coverage</span><span class="status">shift</span></div>
+      <div class="chart-wrap"><div class="native-chart" id="manpowerChart"></div></div>
+    </div>
+    <div class="panel" data-chart="complaints">
+      <div class="panel-title"><span>Complaints By Category</span><span class="status">customer</span></div>
+      <div class="chart-wrap"><div class="native-chart" id="complaintsChart"></div></div>
+    </div>
+    <div class="panel" data-chart="alerts">
+      <div class="panel-title"><span>Active Alerts By Severity</span><span class="status">ops</span></div>
+      <div class="chart-wrap"><div class="native-chart" id="alertsChart"></div></div>
+    </div>
+    <div class="panel" data-chart="operations">
+      <div class="panel-title"><span>Campaign And Delivery Status</span><span class="status">execution</span></div>
+      <div class="chart-wrap"><div class="native-chart" id="opsChart"></div></div>
+    </div>
+    <div class="panel" data-chart="audit">
+      <div class="panel-title"><span>AI Recommendation Audit</span><span class="status">workflow</span></div>
+      <div class="chart-wrap"><div class="native-chart" id="auditChart"></div></div>
+    </div>
+    <div class="panel" data-chart="weather">
+      <div class="panel-title"><span>Weather Demand Signal</span><span class="status">7 days</span></div>
+      <div class="chart-wrap"><div class="native-chart" id="weatherChart"></div></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const apiInput = document.getElementById('apiBase');
+apiInput.value = `${window.location.protocol}//${window.location.hostname}:8000`;
+let API = apiInput.value;
+let currentOutlet = null;
+const chartView = document.getElementById('chartView');
+
+function selectGraph(value){
+  const available = Array.from(document.querySelectorAll('[data-chart]')).map(panel => panel.dataset.chart);
+  const selected = available.includes(value) ? value : 'categoryToday';
+  chartView.value = selected;
+  document.querySelectorAll('[data-chart]').forEach(panel => {
+    panel.classList.toggle('active-chart', panel.dataset.chart === selected);
+  });
+  document.getElementById('trendDays').disabled = selected !== 'sales';
+  document.getElementById('categoryMetric').disabled = !selected.startsWith('category');
+  const url = new URL(window.location.href);
+  url.searchParams.set('view', selected);
+  history.replaceState({}, '', url);
+}
+
+chartView.addEventListener('change', event => selectGraph(event.target.value));
+selectGraph(new URLSearchParams(window.location.search).get('view'));
+
+apiInput.addEventListener('change', e => {
+  API = e.target.value.replace(/\/$/, '');
+  boot();
+});
+document.getElementById('refreshBtn').addEventListener('click', () => refreshAll());
+
+function fmtMoney(value){
+  return '৳ ' + Number(value || 0).toLocaleString('en-BD', {maximumFractionDigits:0});
+}
+function shortDate(value){
+  return new Date(value + 'T00:00:00').toLocaleDateString('en-GB', {day:'2-digit', month:'short'});
+}
+async function api(path){
+  const res = await fetch(`${API}${path}`);
+  if(!res.ok) throw new Error(`${path} -> ${res.status}`);
+  return res.json();
+}
+function countBy(rows, key){
+  return rows.reduce((acc, row) => {
+    const value = row[key] || 'unknown';
+    acc[value] = (acc[value] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function svgText(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+function compactLabel(value, max = 12){
+  const text = String(value ?? '');
+  return text.length > max ? text.slice(0, max - 1) + '…' : text;
+}
+function formatChartValue(value, format){
+  const number = Number(value || 0);
+  if(format === 'money') return fmtMoney(number);
+  if(format === 'percent') return `${number.toLocaleString('en-BD',{maximumFractionDigits:1})}%`;
+  return number.toLocaleString('en-BD',{maximumFractionDigits:1});
+}
+function formatAxisValue(value, format){
+  const number = Number(value || 0);
+  const prefix = format === 'money' ? '৳' : '';
+  if(Math.abs(number) >= 1000000) return `${prefix}${(number/1000000).toFixed(1)}M`;
+  if(Math.abs(number) >= 1000) return `${prefix}${(number/1000).toFixed(number >= 10000 ? 0 : 1)}K`;
+  return `${prefix}${Math.round(number).toLocaleString('en-BD')}`;
+}
+function chart(id, type, data){
+  const el = document.getElementById(id);
+  const labels = data.labels || [];
+  const datasets = data.datasets || [];
+  if(!labels.length || !datasets.length){
+    el.innerHTML = '<div class="chart-empty">No chart data</div>';
+    return;
+  }
+  if(type === 'line'){
+    renderLineChart(el, labels, datasets, data);
+  } else if(type === 'doughnut' || type === 'pie'){
+    renderCategoryBars(el, labels, datasets[0], data);
+  } else {
+    renderBarChart(el, labels, datasets, data);
+  }
+}
+function renderLineChart(el, labels, datasets, options = {}){
+  const width = 900, height = 320, left = 66, right = 66, top = 30, bottom = 48;
+  const colors = ['#175CD3', '#15803D', '#D97706', '#B42318'];
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const xStep = labels.length > 1 ? plotWidth / (labels.length - 1) : 0;
+  const datasetMaxima = datasets.map(ds => Math.max(...(ds.data || []).map(Number), 1));
+  const grid = Array.from({length:5}).map((_, i) => {
+    const y = top + i * (plotHeight / 4);
+    const leftValue = datasetMaxima[0] * (4 - i) / 4;
+    const rightValue = (datasetMaxima[1] || datasetMaxima[0]) * (4 - i) / 4;
+    return `<line x1="${left}" y1="${y}" x2="${width-right}" y2="${y}" stroke="rgba(23,32,28,.08)"/>
+      <text x="${left-9}" y="${y+4}" text-anchor="end" font-size="10" fill="#667085">${svgText(formatAxisValue(leftValue,datasets[0]?.format))}</text>
+      ${datasets[1] ? `<text x="${width-right+9}" y="${y+4}" text-anchor="start" font-size="10" fill="#667085">${svgText(formatAxisValue(rightValue,datasets[1]?.format))}</text>` : ''}`;
+  }).join('');
+  const lines = datasets.map((ds, dsIndex) => {
+    const datasetMax = Math.max(...(ds.data || []).map(Number), 1);
+    const points = (ds.data || []).map((value, i) => {
+      const x = left + i * xStep;
+      const y = top + plotHeight - (Number(value) / datasetMax) * plotHeight;
+      return `${x},${y}`;
+    }).join(' ');
+    const circles = (ds.data || []).map((value, i) => {
+      const x = left + i * xStep;
+      const y = top + plotHeight - (Number(value) / datasetMax) * plotHeight;
+      return `<circle cx="${x}" cy="${y}" r="4" fill="${colors[dsIndex % colors.length]}"><title>${svgText(labels[i])} · ${svgText(ds.label)}: ${svgText(formatChartValue(value,ds.format))}</title></circle>`;
+    }).join('');
+    return `<polyline points="${points}" fill="none" stroke="${colors[dsIndex % colors.length]}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${circles}`;
+  }).join('');
+  const xLabels = labels.map((label, i) => {
+    const x = left + i * xStep;
+    return `<text x="${x}" y="${height - 28}" text-anchor="middle" font-size="11" fill="#667085">${svgText(compactLabel(label, 8))}</text>`;
+  }).join('');
+  const axisTitles = `
+    <text x="${width/2}" y="${height-5}" text-anchor="middle" font-size="11" font-weight="600" fill="#475467">${svgText(options.xLabel || '')}</text>
+    <text x="14" y="${height/2}" text-anchor="middle" font-size="11" font-weight="600" fill="#475467" transform="rotate(-90 14 ${height/2})">${svgText(options.yLabel || datasets[0]?.label || '')}</text>
+    ${datasets[1] ? `<text x="${width-14}" y="${height/2}" text-anchor="middle" font-size="11" font-weight="600" fill="#475467" transform="rotate(90 ${width-14} ${height/2})">${svgText(options.y1Label || datasets[1].label || '')}</text>` : ''}`;
+  const legend = datasets.map((ds, i) => `<span style="color:${colors[i % colors.length]}">● ${svgText(ds.label)}</span>`).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img">${grid}${lines}${xLabels}${axisTitles}</svg><div class="chart-legend">${legend}</div>`;
+}
+function renderBarChart(el, labels, datasets, options = {}){
+  const width = 900, height = 300, left = 68, right = 24, top = 24, bottom = 52;
+  const allValues = datasets.flatMap(ds => ds.data || []).map(Number);
+  const max = Math.max(...allValues, 1);
+  const colors = ['#175CD3', '#15803D', '#D97706', '#B42318', '#7A5AF8', '#475467'];
+  const groupWidth = (width - left - right) / labels.length;
+  const barWidth = Math.max(8, (groupWidth - 10) / datasets.length);
+  const bars = labels.map((label, labelIndex) => {
+    const labelBars = datasets.map((ds, dsIndex) => {
+      const value = Number((ds.data || [])[labelIndex] || 0);
+      const h = (value / max) * (height - top - bottom);
+      const x = left + labelIndex * groupWidth + 5 + dsIndex * barWidth;
+      const y = height - bottom - h;
+      const color = Array.isArray(ds.backgroundColor) ? ds.backgroundColor[labelIndex] : (ds.backgroundColor || colors[dsIndex % colors.length]);
+      const valueLabel = ds.showLabels === false ? '' : (value ? formatChartValue(value,ds.compactFormat) : '');
+      return `<rect x="${x}" y="${y}" width="${barWidth - 2}" height="${h}" rx="4" fill="${color}"><title>${svgText(label)} · ${svgText(ds.label)}: ${svgText(formatChartValue(value,ds.format))}</title></rect><text x="${x + barWidth / 2}" y="${Math.max(14, y - 5)}" text-anchor="middle" font-size="10" fill="#475467">${svgText(valueLabel)}</text>`;
+    }).join('');
+    const x = left + labelIndex * groupWidth + groupWidth / 2;
+    return `${labelBars}<text x="${x}" y="${height - 29}" text-anchor="middle" font-size="10" fill="#667085">${svgText(compactLabel(label, 10))}</text>`;
+  }).join('');
+  const grid = Array.from({length:5}).map((_, i) => {
+    const y = top + i * ((height - top - bottom) / 4);
+    const tickValue = max * (4 - i) / 4;
+    return `<line x1="${left}" y1="${y}" x2="${width-right}" y2="${y}" stroke="rgba(23,32,28,.08)"/>
+      <text x="${left-9}" y="${y+4}" text-anchor="end" font-size="10" fill="#667085">${svgText(formatAxisValue(tickValue,datasets[0]?.format))}</text>`;
+  }).join('');
+  const axisTitles = `<text x="${width/2}" y="${height-5}" text-anchor="middle" font-size="11" font-weight="600" fill="#475467">${svgText(options.xLabel || '')}</text>
+    <text x="14" y="${height/2}" text-anchor="middle" font-size="11" font-weight="600" fill="#475467" transform="rotate(-90 14 ${height/2})">${svgText(options.yLabel || datasets[0]?.label || '')}</text>`;
+  const legend = datasets.map((ds, i) => `<span style="color:${Array.isArray(ds.backgroundColor) ? colors[i % colors.length] : (ds.backgroundColor || colors[i % colors.length])}">■ ${svgText(ds.label)}</span>`).join('');
+  el.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img">${grid}${bars}${axisTitles}</svg><div class="chart-legend">${legend}</div>`;
+}
+function renderCategoryBars(el, labels, dataset, options = {}){
+  const width = 900, height = 300, pad = 26;
+  const values = (dataset.data || []).map(Number);
+  const max = Math.max(...values, 1);
+  const colors = dataset.backgroundColor || ['#175CD3', '#15803D', '#D97706', '#B42318', '#7A5AF8'];
+  const rowHeight = (height - pad * 2) / labels.length;
+  const rows = labels.map((label, i) => {
+    const value = values[i] || 0;
+    const barWidth = (value / max) * (width - 260);
+    const y = pad + i * rowHeight;
+    const valueX = 225 + barWidth;
+    const valueAnchor = valueX > 790 ? 'end' : 'start';
+    const safeValueX = valueX > 790 ? 850 : valueX;
+    return `
+      <text x="${pad}" y="${y + 16}" font-size="12" fill="#344054">${svgText(compactLabel(label, 24))}</text>
+      <rect x="220" y="${y + 3}" width="${barWidth}" height="18" rx="5" fill="${colors[i % colors.length]}"><title>${svgText(label)}: ${svgText(formatChartValue(value,dataset.format))}</title></rect>
+      <text x="${safeValueX}" y="${y + 17}" text-anchor="${valueAnchor}" font-size="11" fill="#475467">${svgText(formatChartValue(value,dataset.format))}</text>
+    `;
+  }).join('');
+  const axisTitle = `<text x="${width/2}" y="${height-3}" text-anchor="middle" font-size="11" font-weight="600" fill="#475467">${svgText(options.xLabel || dataset.label || '')}</text>`;
+  el.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img">${rows}${axisTitle}</svg>`;
+}
+
+async function loadOutlets(){
+  const outlets = await api('/api/outlets');
+  const sel = document.getElementById('outletSelect');
+  sel.innerHTML = outlets.map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+  currentOutlet = Number(sel.value || outlets[0]?.id);
+  sel.onchange = e => {
+    currentOutlet = Number(e.target.value);
+    refreshAll();
+  };
+}
+
+async function loadTargets(){
+  const t = await api(`/api/targets/progress?outlet_id=${currentOutlet}`);
+  document.getElementById('mTarget').textContent = fmtMoney(t.monthly_target);
+  document.getElementById('wTarget').textContent = fmtMoney(t.weekly_target);
+  document.getElementById('dTarget').textContent = fmtMoney(t.daily_target);
+  document.getElementById('mTargetSub').textContent = `${t.month_achievement_pct}% achieved · gap ${fmtMoney(t.month_gap)}`;
+  document.getElementById('wTargetSub').textContent = `${t.week_achievement_pct}% achieved · gap ${fmtMoney(t.week_gap)}`;
+  document.getElementById('dTargetSub').textContent = `${t.today_achievement_pct}% achieved · gap ${fmtMoney(t.today_gap)}`;
+  chart('targetChart', 'bar', {
+    labels:['Monthly','Weekly','Daily'],
+    xLabel:'Target period',
+    yLabel:'Amount (BDT)',
+    datasets:[
+      {label:'Achieved', data:[t.month_sales,t.week_sales,t.today_sales], format:'money', showLabels:false, backgroundColor:'#175CD3'},
+      {label:'Target', data:[t.monthly_target,t.weekly_target,t.daily_target], format:'money', showLabels:false, backgroundColor:'#D0D5DD'}
+    ]
+  });
+}
+
+async function loadSales(){
+  const days = Number(document.getElementById('trendDays').value);
+  document.getElementById('trendPeriodLabel').textContent = `${days} days`;
+  const rows = await api(`/api/sales/trend?outlet_id=${currentOutlet}&days=${days}`);
+  chart('salesChart', 'line', {
+    labels:rows.map(r => shortDate(r.date)),
+    xLabel:'Date',
+    yLabel:'Revenue (BDT)',
+    y1Label:'Customer footfall',
+    datasets:[
+      {label:'Revenue', data:rows.map(r => r.revenue), format:'money', borderColor:'#175CD3', backgroundColor:'rgba(23,92,211,.12)', tension:.35, yAxisID:'y'},
+      {label:'Footfall', data:rows.map(r => r.footfall), borderColor:'#15803D', backgroundColor:'rgba(21,128,61,.12)', tension:.35, yAxisID:'y1'}
+    ]
+  }, {
+    scales:{
+      x:{grid:{display:false}},
+      y:{beginAtZero:true, position:'left'},
+      y1:{beginAtZero:true, position:'right', grid:{drawOnChartArea:false}}
+    }
+  });
+}
+
+async function loadCategorySales(){
+  const rows = await api(`/api/sales/by-category?outlet_id=${currentOutlet}`);
+  const measure = document.getElementById('categoryMetric').value;
+  const suffix = measure === 'revenue' ? 'revenue' : 'units';
+  const format = measure === 'revenue' ? 'money' : 'number';
+  document.querySelectorAll('.categoryMeasureLabel').forEach(el => {
+    el.textContent = measure === 'revenue' ? 'Revenue · BDT' : 'Units sold';
+  });
+  const periods = [
+    ['categoryTodayChart', `today_${suffix}`, 'Today sales'],
+    ['categoryMonthChart', `month_${suffix}`, 'Month-to-date sales'],
+    ['categoryYearChart', `year_${suffix}`, 'Year-to-date sales'],
+  ];
+  periods.forEach(([id, field, label]) => {
+    const ranked = [...rows].sort((a, b) => Number(b[field]) - Number(a[field]));
+    chart(id, 'doughnut', {
+      labels:ranked.map(row => row.category),
+      xLabel:measure === 'revenue' ? 'Sales amount (BDT)' : 'Units sold',
+      datasets:[{
+        label,
+        data:ranked.map(row => row[field]),
+        format,
+        backgroundColor:['#175CD3','#15803D','#D97706','#B42318','#7A5AF8','#0E7490','#A15C07','#475467','#E31B23','#128A43','#F9B233','#667085','#98A2B3','#344054']
+      }]
+    });
+  });
+}
+
+document.getElementById('trendDays').addEventListener('change', loadSales);
+document.getElementById('categoryMetric').addEventListener('change', loadCategorySales);
+
+async function loadInventory(){
+  const rows = await api(`/api/inventory?outlet_id=${currentOutlet}`);
+  const sorted = rows.sort((a,b)=>(a.days_of_cover ?? 999)-(b.days_of_cover ?? 999)).slice(0,10);
+  chart('stockChart', 'bar', {
+    labels:sorted.map(r => r.sku.replace('SKU-','')),
+    xLabel:'Product SKU',
+    yLabel:'Days of stock cover',
+    datasets:[{label:'Days cover', data:sorted.map(r => r.days_of_cover || 0), backgroundColor:sorted.map(r => r.risk_level === 'critical' ? '#B42318' : r.risk_level === 'high' ? '#D97706' : '#175CD3')}]
+  });
+}
+
+async function loadForecasts(){
+  let rows = await api(`/api/forecasts/demand?outlet_id=${currentOutlet}&limit=10`);
+  if(!rows.length){
+    await fetch(`${API}/api/forecasts/demand/run?outlet_id=${currentOutlet}&horizon_days=7`, {method:'POST'});
+    rows = await api(`/api/forecasts/demand?outlet_id=${currentOutlet}&limit=10`);
+  }
+  const critical = rows.filter(r => r.risk_level === 'critical').length;
+  const high = rows.filter(r => r.risk_level === 'high').length;
+  document.getElementById('riskSummary').textContent = `${critical + high} high+`;
+  document.getElementById('riskSub').textContent = `${critical} critical · ${high} high forecast rows`;
+  chart('forecastChart', 'bar', {
+    labels:rows.map(r => r.category),
+    xLabel:'Product category',
+    yLabel:'Projected gap (units)',
+    datasets:[{label:'Projected gap units', data:rows.map(r => r.projected_gap_units), backgroundColor:'#B42318'}]
+  });
+}
+
+async function loadManpower(){
+  const rows = await api(`/api/manpower?outlet_id=${currentOutlet}`);
+  chart('manpowerChart', 'bar', {
+    labels:rows.map(r => r.shift),
+    xLabel:'Work shift',
+    yLabel:'Number of staff',
+    datasets:[
+      {label:'Required', data:rows.map(r => r.required_staff), backgroundColor:'#D0D5DD'},
+      {label:'Present', data:rows.map(r => r.present_staff), backgroundColor:'#15803D'}
+    ]
+  });
+}
+
+async function loadComplaints(){
+  const rows = await api(`/api/complaints?outlet_id=${currentOutlet}`);
+  const grouped = countBy(rows, 'category');
+  chart('complaintsChart', 'doughnut', {
+    labels:Object.keys(grouped),
+    xLabel:'Number of complaints',
+    datasets:[{data:Object.values(grouped), backgroundColor:['#175CD3','#15803D','#D97706','#B42318','#7A5AF8']}]
+  });
+}
+
+async function loadAlerts(){
+  const rows = await api(`/api/alerts?outlet_id=${currentOutlet}`);
+  const grouped = countBy(rows, 'severity');
+  chart('alertsChart', 'doughnut', {
+    labels:Object.keys(grouped),
+    xLabel:'Number of alerts',
+    datasets:[{data:Object.values(grouped), backgroundColor:['#15803D','#D97706','#B42318']}]
+  });
+}
+
+async function loadOps(){
+  const [promos, deliveries] = await Promise.all([
+    api(`/api/operations/promotions?outlet_id=${currentOutlet}`),
+    api(`/api/operations/deliveries?outlet_id=${currentOutlet}`)
+  ]);
+  const promoStatus = countBy(promos, 'status');
+  const deliveryStatus = countBy(deliveries, 'status');
+  const labels = Array.from(new Set([...Object.keys(promoStatus), ...Object.keys(deliveryStatus)]));
+  chart('opsChart', 'bar', {
+    labels,
+    xLabel:'Operational status',
+    yLabel:'Record count',
+    datasets:[
+      {label:'Campaigns', data:labels.map(l => promoStatus[l] || 0), backgroundColor:'#175CD3'},
+      {label:'Deliveries', data:labels.map(l => deliveryStatus[l] || 0), backgroundColor:'#D97706'}
+    ]
+  });
+}
+
+async function loadAudit(){
+  const rows = await api(`/api/ai/recommendations?outlet_id=${currentOutlet}&limit=30`);
+  const grouped = countBy(rows, 'status');
+  chart('auditChart', 'pie', {
+    labels:Object.keys(grouped),
+    xLabel:'Recommendation count',
+    datasets:[{data:Object.values(grouped), backgroundColor:['#D97706','#15803D','#B42318','#175CD3','#7A5AF8']}]
+  });
+}
+
+async function loadWeather(){
+  const data = await api(`/api/operations/weather-context?outlet_id=${currentOutlet}`);
+  const days = data.daily || [];
+  chart('weatherChart', 'bar', {
+    labels:days.map(d => shortDate(d.date)),
+    xLabel:'Forecast date',
+    yLabel:'Weather value',
+    datasets:[
+      {label:'Rain probability %', data:days.map(d => d.precipitation_probability), backgroundColor:'#175CD3'},
+      {label:'Feels like C', data:days.map(d => d.feels_like), backgroundColor:'#D97706'}
+    ]
+  });
+}
+
+async function refreshAll(){
+  const status = document.getElementById('pageStatus');
+  status.className = 'page-status';
+  status.textContent = 'Loading analytics graphs...';
+  const jobs = [
+    ['targets', loadTargets],
+    ['sales', loadSales],
+    ['category sales', loadCategorySales],
+    ['inventory', loadInventory],
+    ['forecast', loadForecasts],
+    ['manpower', loadManpower],
+    ['complaints', loadComplaints],
+    ['alerts', loadAlerts],
+    ['operations', loadOps],
+    ['audit', loadAudit],
+    ['weather', loadWeather],
+  ];
+  const results = await Promise.all(jobs.map(async ([name, fn]) => {
+    try{
+      await fn();
+      return {name, ok:true};
+    }catch(e){
+      return {name, ok:false, message:e.message};
+    }
+  }));
+  const failed = results.filter(result => !result.ok);
+  if(!failed.length){
+    status.textContent = 'Analytics graphs loaded from live outlet data.';
+  }else{
+    status.className = 'page-status error';
+    status.textContent = `Some graphs could not load: ${failed.map(item => item.name).join(', ')}`;
+  }
+}
+
+async function boot(){
+  try{
+    await loadOutlets();
+    await refreshAll();
+  }catch(e){
+    const status = document.getElementById('pageStatus');
+    status.className = 'page-status error';
+    status.textContent = `Analytics page failed to start: ${e.message}`;
+  }
+}
+boot();
+</script>
+</body>
+</html>

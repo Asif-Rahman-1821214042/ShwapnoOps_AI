@@ -1,0 +1,49 @@
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+backend/app/.env
+!backend/app/.env.example
+
+# Local databases and runtime files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+*.pid
+
+# Build / packaging output
+build/
+dist/
+*.egg-info/
+
+# Frontend dependencies and generated output
+node_modules/
+.cache/
+coverage/
+
+# Docker overrides
+docker-compose.override.yml
+compose.override.yml

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShwapnoOps AI - Data Tables</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#F7F9F3;--panel:#fff;--text:#17201C;--muted:#667085;--line:rgba(23,32,28,.11);--blue:#175CD3;--green:#15803D;--red:#B42318;--shadow:0 14px 40px rgba(23,32,28,.08);}
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#F7F9F3,#EEF2EA);color:var(--text);font-family:'IBM Plex Sans',sans-serif}
+  header{position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;gap:14px;padding:18px 28px;background:rgba(255,255,255,.92);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:12px}.mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#E31B23 0 48%,#F9B233 48% 72%,#128A43 72%)}h1{margin:0;font-size:18px}small{color:var(--muted)}
+  .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.nav-link,select,button{border:1px solid var(--line);border-radius:8px;padding:9px 11px;background:#fff;color:#344054;text-decoration:none;font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-transform:uppercase}button{cursor:pointer;background:var(--blue);color:#fff}
+  main{max-width:1560px;margin:auto;padding:24px 28px 60px;display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px}
+  nav,.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+  nav{padding:10px;height:max-content;position:sticky;top:94px}.table-link{display:block;padding:10px 12px;border-radius:6px;color:#475467;text-decoration:none;font-size:13px}.table-link:hover,.table-link.active{background:#EEF4FF;color:var(--blue);font-weight:600}
+  .panel{padding:18px;min-width:0}.panel-title{display:flex;justify-content:space-between;align-items:center;gap:12px;padding-bottom:13px;margin-bottom:12px;border-bottom:1px solid var(--line)}.panel-title h2{margin:0;font-size:18px}.status{color:var(--muted);font:600 11px 'IBM Plex Mono',monospace;text-transform:uppercase}
+  .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12.5px}th{text-align:left;color:var(--muted);font:700 10.5px 'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.06em;padding:9px;border-bottom:1px solid var(--line);white-space:nowrap}td{padding:10px 9px;border-bottom:1px solid var(--line);vertical-align:top}.pill{display:inline-flex;padding:3px 8px;border-radius:999px;background:#F2F4F7;font:600 10px 'IBM Plex Mono',monospace;text-transform:uppercase}.yes{background:#ECFDF3;color:var(--green)}.no{background:#FEF3F2;color:var(--red)}.empty{padding:30px;text-align:center;color:var(--muted)}
+  @media(max-width:850px){header{align-items:flex-start;flex-direction:column}main{grid-template-columns:1fr;padding:16px}nav{position:static;display:flex;overflow:auto}.table-link{white-space:nowrap}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><div class="mark"></div><div><h1>Data Tables</h1><small>One focused page for each outlet dataset</small></div></div>
+  <div class="controls">
+    <a class="nav-link" href="/">Dashboard</a>
+    <a class="nav-link" href="/analytics.html">Analytics</a>
+    <select id="outletSelect"></select>
+    <button id="refreshBtn">Refresh</button>
+  </div>
+</header>
+<main>
+  <nav id="tableNav"></nav>
+  <section class="panel">
+    <div class="panel-title"><h2 id="pageTitle">Loading...</h2><span class="status" id="rowCount">--</span></div>
+    <div class="table-wrap"><table><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table></div>
+  </section>
+</main>
+<script>
+const API = `${window.location.protocol}//${window.location.hostname}:8000`;
+let outletId;
+const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+const shortDate = value => value ? new Date(value + (String(value).includes('T') ? '' : 'T00:00:00')).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+const money = value => `৳ ${Number(value || 0).toLocaleString('en-BD',{maximumFractionDigits:0})}`;
+const pill = (value, positive) => `<span class="pill ${positive === true ? 'yes' : positive === false ? 'no' : ''}">${escapeHtml(value)}</span>`;
+const views = {
+  categories:{title:'Product Categories',path:id=>`/api/categories/summary?outlet_id=${id}`,columns:[
+    ['ID',r=>r.id],['Category',r=>r.name],['Availability',r=>pill(r.product_count>0?'Available':'Not available',r.product_count>0)],['Status',r=>pill(r.is_active?'Active':'Inactive',r.is_active)]
+  ]},
+  inventory:{title:'Outlet Inventory',path:id=>`/api/inventory?outlet_id=${id}`,columns:[
+    ['SKU',r=>r.sku],['Category',r=>r.category],['On hand',r=>r.on_hand_units],['Reorder point',r=>r.reorder_point],['Days cover',r=>r.days_of_cover??'—'],['Risk',r=>pill(r.risk_level)]
+  ]},
+  forecasts:{title:'Gemini Category Forecasts',path:id=>`/api/forecasts/demand?outlet_id=${id}&limit=100`,columns:[
+    ['Category',r=>r.category],['Date',r=>shortDate(r.forecast_date)],['Predicted units',r=>r.predicted_units],['Recommended',r=>r.recommended_stock_units],['Gap',r=>r.projected_gap_units],['Risk',r=>pill(r.risk_level)],['Model',r=>r.model_name]
+  ]},
+  alerts:{title:'Active Alerts',path:id=>`/api/alerts?outlet_id=${id}`,columns:[
+    ['Severity',r=>pill(r.severity)],['Type',r=>r.type],['Message',r=>r.message],['Created',r=>shortDate(r.created_at)]
+  ]},
+  complaints:{title:'Customer Complaints',path:id=>`/api/complaints?outlet_id=${id}`,columns:[
+    ['Status',r=>pill(r.status)],['Category',r=>r.category],['Severity',r=>`${r.severity}/5`],['Description',r=>r.description],['Created',r=>shortDate(r.created_at)]
+  ]},
+  movements:{title:'Inventory Movements',path:id=>`/api/operations/inventory-movements?outlet_id=${id}&limit=100`,columns:[
+    ['Type',r=>pill(r.movement_type)],['SKU',r=>r.sku],['Category',r=>r.category],['Quantity',r=>r.quantity],['Reference',r=>r.reference],['Occurred',r=>shortDate(r.occurred_at)]
+  ]},
+  stockouts:{title:'Stock-Out History',path:id=>`/api/operations/stock-outs?outlet_id=${id}&limit=100`,columns:[
+    ['SKU',r=>r.sku],['Category',r=>r.category],['Root cause',r=>r.root_cause],['Lost sales',r=>money(r.estimated_lost_sales)],['Status',r=>pill(r.resolved_at?'Resolved':'Open',!!r.resolved_at)]
+  ]},
+  promotions:{title:'Promotions & Campaigns',path:id=>`/api/operations/promotions?outlet_id=${id}`,columns:[
+    ['Campaign',r=>r.name],['Category',r=>r.category],['SKU',r=>r.sku||'All'],['Dates',r=>`${shortDate(r.start_date)} – ${shortDate(r.end_date)}`],['Discount',r=>`${r.discount_pct}%`],['Status',r=>pill(r.status)]
+  ]},
+  deliveries:{title:'Delivery Schedule',path:id=>`/api/operations/deliveries?outlet_id=${id}`,columns:[
+    ['Supplier',r=>r.supplier],['SKU',r=>r.sku],['Category',r=>r.category],['Quantity',r=>r.quantity],['Date',r=>shortDate(r.scheduled_date)],['ETA',r=>r.eta_window],['Status',r=>pill(r.status)]
+  ]},
+  seasonal:{title:'Seasonal Sales Events',path:id=>`/api/operations/seasonal-events?outlet_id=${id}`,columns:[
+    ['Event',r=>r.name],['Category focus',r=>r.category_focus],['Window',r=>`${shortDate(r.start_date)} – ${shortDate(r.end_date)}`],['Uplift',r=>`${r.uplift_pct}%`],['Notes',r=>r.notes]
+  ]},
+  audits:{title:'Store Audit Reports',path:id=>`/api/operations/audit-reports?outlet_id=${id}&limit=100`,columns:[
+    ['Date',r=>shortDate(r.audit_date)],['Auditor',r=>r.auditor_name],['Score',r=>`${r.score_pct}%`],['Finding',r=>r.findings],['Corrective action',r=>r.corrective_action]
+  ]},
+  issues:{title:'Manager-Reported Issues',path:id=>`/api/operations/manual-issues?outlet_id=${id}&limit=100`,columns:[
+    ['Status',r=>pill(r.status)],['Category',r=>r.category],['Severity',r=>`${r.severity}/5`],['Title',r=>r.title],['Reported by',r=>r.reported_by],['Created',r=>shortDate(r.created_at)]
+  ]},
+  recommendations:{title:'AI Recommendation Audit',path:id=>`/api/ai/recommendations?outlet_id=${id}&limit=100`,columns:[
+    ['ID',r=>r.id],['Purpose',r=>r.purpose],['Status',r=>pill(r.status)],['Generated by',r=>r.generated_by],['Model',r=>r.model||'—'],['Created',r=>shortDate(r.created_at)]
+  ]}
+};
+const params = new URLSearchParams(location.search);
+const currentView = views[params.get('view')] ? params.get('view') : 'categories';
+async function api(path){const response=await fetch(API+path);if(!response.ok)throw new Error(`${path} → ${response.status}`);return response.json()}
+function renderNav(){
+  document.getElementById('tableNav').innerHTML=Object.entries(views).map(([key,view])=>`<a class="table-link ${key===currentView?'active':''}" href="/data-tables.html?view=${key}">${escapeHtml(view.title)}</a>`).join('');
+}
+async function loadOutlets(){
+  const rows=await api('/api/outlets');const select=document.getElementById('outletSelect');
+  select.innerHTML=rows.map(row=>`<option value="${row.id}">${escapeHtml(row.name)}</option>`).join('');
+  outletId=Number(select.value);select.onchange=()=>{outletId=Number(select.value);loadTable()};
+}
+async function loadTable(){
+  const view=views[currentView];document.title=`${view.title} - ShwapnoOps AI`;document.getElementById('pageTitle').textContent=view.title;
+  document.getElementById('tableHead').innerHTML=`<tr>${view.columns.map(column=>`<th>${escapeHtml(column[0])}</th>`).join('')}</tr>`;
+  document.getElementById('tableBody').innerHTML=`<tr><td colspan="${view.columns.length}" class="empty">Loading...</td></tr>`;
+  try{
+    const rows=await api(view.path(outletId));document.getElementById('rowCount').textContent=`${rows.length} rows`;
+    document.getElementById('tableBody').innerHTML=rows.map(row=>`<tr>${view.columns.map(column=>`<td>${column[1](row)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${view.columns.length}" class="empty">No records found.</td></tr>`;
+  }catch(error){document.getElementById('tableBody').innerHTML=`<tr><td colspan="${view.columns.length}" class="empty">${escapeHtml(error.message)}</td></tr>`}
+}
+document.getElementById('refreshBtn').onclick=loadTable;
+renderNav();loadOutlets().then(loadTable);
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+.env
+app/.env
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+shwapno_ops.db
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.log
+.DS_Store

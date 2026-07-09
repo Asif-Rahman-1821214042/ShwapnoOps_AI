@@ -1,0 +1,1646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShwapnoOps AI — Outlet Control Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12211C;
+    --panel:#1B2F27;
+    --panel-2:#213A30;
+    --paper:#F3EFE2;
+    --paper-dim:#E7E1CE;
+    --mango:#E8952F;
+    --mango-dim:#c97e24;
+    --mint:#7FB69E;
+    --chili:#D8503A;
+    --line: rgba(243,239,226,0.14);
+    --text-lo: rgba(243,239,226,0.62);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 90% -10%, #1d3a2c 0%, transparent 60%),
+      var(--ink);
+    color:var(--paper);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  h1,h2,h3,.display{font-family:'Oswald', sans-serif; text-transform:uppercase; letter-spacing:0.02em;}
+
+  /* ---- Top bar ---- */
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 28px; border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:20;
+    background:linear-gradient(180deg, var(--ink) 80%, transparent);
+    backdrop-filter:blur(6px);
+  }
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand .mark{
+    width:34px; height:34px; border-radius:6px;
+    background:repeating-linear-gradient(45deg, var(--mango), var(--mango) 4px, var(--mango-dim) 4px, var(--mango-dim) 8px);
+    box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px var(--mango);
+  }
+  .brand h1{font-size:19px; margin:0; color:var(--paper); font-weight:600;}
+  .brand small{display:block; font-size:10.5px; color:var(--text-lo); letter-spacing:0.14em; font-family:'IBM Plex Mono',monospace; text-transform:uppercase;}
+  .top-controls{display:flex; align-items:center; gap:14px;}
+  .nav-link{
+    color:var(--text-lo);
+    text-decoration:none;
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:8px 10px;
+    font:700 10.5px 'IBM Plex Mono',monospace;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+  }
+  .nav-link:hover{color:var(--blue); border-color:var(--blue);}
+  select{
+    background:var(--panel); color:var(--paper); border:1px solid var(--line);
+    padding:9px 12px; border-radius:8px; font-family:'IBM Plex Sans'; font-size:13.5px;
+  }
+  .live-dot{width:8px; height:8px; border-radius:50%; background:var(--mint); box-shadow:0 0 0 4px rgba(127,182,158,0.18); animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .live-pill{display:flex; align-items:center; gap:8px; font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.1em; color:var(--text-lo); text-transform:uppercase;}
+
+  main{padding:24px 28px 60px; max-width:1440px; margin:0 auto;}
+
+  .grid{display:grid; gap:18px;}
+  .g-top{grid-template-columns: 340px 1fr; margin-bottom:18px;}
+  .g-mid{grid-template-columns: 1.4fr 1fr; margin-bottom:18px;}
+  .g-bot{grid-template-columns: 1.1fr 0.9fr 1fr;}
+  @media (max-width:1100px){
+    .g-top,.g-mid,.g-bot{grid-template-columns:1fr;}
+  }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:18px 20px;
+  }
+  .panel-title{
+    font-size:12px; letter-spacing:.14em; color:var(--text-lo); font-family:'IBM Plex Mono';
+    text-transform:uppercase; margin:0 0 14px; display:flex; justify-content:space-between; align-items:center;
+  }
+
+  /* ---- Scorecard "ticket" ---- */
+  .ticket{
+    background:var(--paper); color:var(--ink); border-radius:10px; padding:20px;
+    position:relative; overflow:hidden;
+  }
+  .ticket::after{
+    content:""; position:absolute; left:0; right:0; bottom:-1px; height:14px;
+    background: radial-gradient(circle at 8px 0, transparent 7px, var(--panel) 7.5px) repeat-x;
+    background-size:16px 16px;
+  }
+  .ticket .score-big{font-family:'Oswald'; font-size:56px; font-weight:700; line-height:1; margin:2px 0 0;}
+  .ticket .score-label{font-family:'IBM Plex Mono'; font-size:11px; letter-spacing:.12em; text-transform:uppercase; opacity:.6;}
+  .ticket-rows{margin-top:16px; display:flex; flex-direction:column; gap:9px;}
+  .ticket-row{display:flex; justify-content:space-between; font-family:'IBM Plex Mono'; font-size:12.5px; border-bottom:1px dashed rgba(18,33,28,0.18); padding-bottom:7px;}
+  .ticket-row b{font-weight:600;}
+
+  /* ---- Priority queue: shelf-label cards ---- */
+  .task-list{display:flex; flex-direction:column; gap:10px; max-height:420px; overflow-y:auto; padding-right:4px;}
+  .task-card{
+    display:grid; grid-template-columns:44px 1fr auto; align-items:center; gap:12px;
+    background:var(--panel-2); border-radius:8px; padding:12px 14px;
+    border-left:5px solid var(--mint);
+  }
+  .task-card.urgent{border-left-color:var(--chili);}
+  .task-card.warn{border-left-color:var(--mango);}
+  .task-card .score{
+    font-family:'IBM Plex Mono'; font-weight:600; font-size:16px; text-align:center;
+    background:rgba(0,0,0,0.2); border-radius:6px; padding:8px 0;
+  }
+  .task-card .title{font-size:13.5px; font-weight:500;}
+  .task-card .meta{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--text-lo); text-transform:uppercase; letter-spacing:.06em; margin-top:3px;}
+  .task-card button{
+    background:transparent; border:1px solid var(--line); color:var(--paper);
+    border-radius:6px; padding:6px 10px; font-size:11px; cursor:pointer; font-family:'IBM Plex Mono';
+  }
+  .task-card button:hover{border-color:var(--mint); color:var(--mint);}
+  .empty-note{color:var(--text-lo); font-size:13px; font-family:'IBM Plex Mono'; padding:20px 0; text-align:center;}
+
+  /* ---- Live ops receipt (websocket feed) ---- */
+  .receipt-wrap{
+    background:var(--paper); color:var(--ink); border-radius:10px;
+    padding:14px 16px 8px; max-height:300px; overflow-y:auto; position:relative;
+  }
+  .receipt-wrap::before{
+    content:""; position:absolute; top:-1px; left:0; right:0; height:12px;
+    background: radial-gradient(circle at 8px 12px, var(--panel) 7px, transparent 7.5px) repeat-x;
+    background-size:16px 16px;
+  }
+  .receipt-line{
+    font-family:'IBM Plex Mono'; font-size:11.5px; line-height:1.5; padding:6px 0;
+    border-bottom:1px dashed rgba(18,33,28,0.18); display:flex; gap:8px;
+  }
+  .receipt-line .tag{font-weight:700; letter-spacing:.05em;}
+  .receipt-line.critical .tag{color:var(--chili);}
+  .receipt-line.warning .tag{color:var(--mango-dim);}
+  .receipt-line.info .tag{color:#3a6b52;}
+
+  /* ---- Tables ---- */
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  th{text-align:left; font-family:'IBM Plex Mono'; font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-lo); padding:6px 8px; border-bottom:1px solid var(--line);}
+  td{padding:8px; border-bottom:1px solid var(--line);}
+  .risk-chip{padding:3px 9px; border-radius:20px; font-family:'IBM Plex Mono'; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;}
+  .risk-critical{background:rgba(216,80,58,.18); color:#f0897a;}
+  .risk-high{background:rgba(232,149,47,.18); color:var(--mango);}
+  .risk-medium{background:rgba(127,182,158,.14); color:var(--mint);}
+  .risk-low{background:rgba(127,182,158,.08); color:var(--text-lo);}
+
+  /* ---- Shifts ---- */
+  .shift-row{display:flex; align-items:center; gap:12px; margin-bottom:12px;}
+  .shift-name{width:70px; font-family:'IBM Plex Mono'; font-size:11px; text-transform:uppercase; color:var(--text-lo);}
+  .shift-bar{flex:1; height:10px; background:rgba(255,255,255,0.08); border-radius:6px; overflow:hidden;}
+  .shift-bar > div{height:100%; background:var(--mint);}
+  .shift-bar.low > div{background:var(--chili);}
+  .shift-bar.mid > div{background:var(--mango);}
+  .shift-pct{width:42px; text-align:right; font-family:'IBM Plex Mono'; font-size:11.5px;}
+  .rec-note{
+    margin-top:10px; padding:10px 12px; background:rgba(232,149,47,.1);
+    border:1px solid rgba(232,149,47,.3); border-radius:8px; font-size:12px; color:var(--mango);
+  }
+
+  /* ---- Chatbot (intercom) ---- */
+  .chat-box{display:flex; flex-direction:column; height:340px;}
+  .chat-log{flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; padding-right:4px;}
+  .msg{max-width:88%; padding:9px 12px; border-radius:10px; font-size:12.5px; line-height:1.45; white-space:pre-wrap;}
+  .msg.user{align-self:flex-end; background:var(--mango); color:#241505; border-bottom-right-radius:3px;}
+  .msg.bot{align-self:flex-start; background:var(--panel-2); border-bottom-left-radius:3px;}
+  .chat-input{display:flex; gap:8px; margin-top:10px;}
+  .chat-input input{
+    flex:1; background:var(--panel-2); border:1px solid var(--line); color:var(--paper);
+    padding:10px 12px; border-radius:8px; font-family:'IBM Plex Sans'; font-size:13px;
+  }
+  .chat-input button{
+    background:var(--mango); border:none; color:#241505; font-weight:600;
+    padding:0 16px; border-radius:8px; cursor:pointer; font-family:'IBM Plex Sans';
+  }
+  .chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
+  .chip{font-size:10.5px; font-family:'IBM Plex Mono'; padding:5px 10px; border:1px solid var(--line); border-radius:20px; color:var(--text-lo); cursor:pointer;}
+  .chip:hover{border-color:var(--mint); color:var(--mint);}
+
+  .export-row{display:flex; gap:8px;}
+  .export-btn{
+    background:transparent; border:1px solid var(--line); color:var(--text-lo);
+    padding:6px 10px; border-radius:6px; font-size:11px; font-family:'IBM Plex Mono'; cursor:pointer; text-decoration:none;
+  }
+  .export-btn:hover{color:var(--paper); border-color:var(--paper);}
+
+  ::-webkit-scrollbar{width:7px;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15); border-radius:6px;}
+
+  .api-config{
+    position:fixed; bottom:14px; right:14px; z-index:30;
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:8px 10px; font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--text-lo);
+    display:flex; align-items:center; gap:6px;
+  }
+  .api-config input{background:var(--panel-2); border:1px solid var(--line); color:var(--paper); border-radius:6px; padding:4px 6px; font-family:'IBM Plex Mono'; font-size:10.5px; width:170px;}
+  .sales-native-chart{height:300px;width:100%;}
+  .sales-native-chart svg{width:100%;height:270px;display:block;}
+  .sales-chart-legend{display:flex;gap:18px;color:var(--text-lo);font:600 10.5px 'IBM Plex Mono',monospace;}
+  .panel:has(#categoryTable),
+  .panel:has(#forecastTable),
+  .panel:has(#auditTable),
+  .panel:has(#invTable),
+  .panel:has(#alertsTable),
+  .panel:has(#complaintsTable),
+  .panel:has(#movementTable),
+  .panel:has(#stockOutTable),
+  .panel:has(#promoTable),
+  .panel:has(#deliveryTable),
+  .panel:has(#seasonalTable),
+  .panel:has(#manualIssueTable){display:none;}
+
+  /* Professional workspace refresh */
+  :root{
+    --ink:#17201C;
+    --panel:#FFFFFF;
+    --panel-2:#F5F7F2;
+    --paper:#F8FAF6;
+    --paper-dim:#E7EBE2;
+    --mango:#D97706;
+    --mango-dim:#92400E;
+    --mint:#15803D;
+    --chili:#B42318;
+    --line:rgba(23,32,28,0.11);
+    --text-lo:#667085;
+    --text:#17201C;
+    --blue:#175CD3;
+    --violet:#7A5AF8;
+    --shadow:0 14px 40px rgba(23,32,28,0.08);
+  }
+  body{
+    background:
+      linear-gradient(180deg, #F7F9F3 0%, #EEF2EA 48%, #F8FAF6 100%);
+    color:var(--text);
+  }
+  h1,h2,h3,.display{font-family:'IBM Plex Sans', sans-serif; text-transform:none; letter-spacing:0;}
+  header{
+    background:rgba(255,255,255,.88);
+    border-bottom:1px solid var(--line);
+    box-shadow:0 1px 0 rgba(23,32,28,.03);
+  }
+  .brand .mark{
+    background:linear-gradient(135deg,#E31B23 0 48%,#F9B233 48% 72%,#128A43 72%);
+    border-radius:9px;
+    box-shadow:none;
+  }
+  .brand h1{color:var(--text); font-size:18px; font-weight:700;}
+  .brand small,.live-pill{color:var(--text-lo);}
+  select,.api-config input,.chat-input input{
+    background:#fff;
+    color:var(--text);
+    border-color:var(--line);
+  }
+  main{max-width:1520px;}
+  .panel,.ticket{
+    background:var(--panel);
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:8px;
+    box-shadow:var(--shadow);
+  }
+  .ticket::after,.receipt-wrap::before{display:none;}
+  .panel-title{
+    color:var(--text-lo);
+    font-weight:700;
+    letter-spacing:.08em;
+    border-bottom:1px solid var(--line);
+    padding-bottom:12px;
+  }
+  .ticket .score-big{font-family:'IBM Plex Sans'; font-weight:700; color:var(--text); font-size:58px;}
+  .ticket .score-label,.ticket-row,.mono,.shift-name,.shift-pct,th,.chip,.export-btn{font-family:'IBM Plex Mono', monospace;}
+  .ticket-row{border-bottom:1px solid var(--line);}
+  .task-list{max-height:390px;}
+  .task-card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-left:4px solid var(--mint);
+    border-radius:8px;
+    box-shadow:0 5px 18px rgba(23,32,28,.04);
+  }
+  .task-card .score{background:#F2F4F7; color:var(--text);}
+  .task-card .meta,.empty-note,th{color:var(--text-lo);}
+  .task-card button,.export-btn{
+    background:#fff;
+    color:#344054;
+    border-color:var(--line);
+    border-radius:6px;
+  }
+  .task-card button:hover,.export-btn:hover{border-color:var(--blue); color:var(--blue);}
+  .task-card.loading{
+    border-left-color:#D0D5DD;
+    opacity:.92;
+  }
+  .task-card.loading .score,
+  .skeleton-line{
+    background:linear-gradient(90deg,#EAECF0 25%,#F9FAFB 37%,#EAECF0 63%);
+    background-size:400% 100%;
+    animation:loadingShimmer 1.25s ease-in-out infinite;
+    color:transparent;
+  }
+  .skeleton-line{
+    display:block;
+    height:12px;
+    border-radius:999px;
+    margin:5px 0;
+  }
+  .skeleton-line.short{width:46%;}
+  .skeleton-line.long{width:82%;}
+  @keyframes loadingShimmer{
+    0%{background-position:100% 0;}
+    100%{background-position:0 0;}
+  }
+  .receipt-wrap{background:#101828; color:#F9FAFB; border-radius:8px;}
+  .receipt-line{border-bottom:1px solid rgba(255,255,255,.09);}
+  .receipt-line.info .tag{color:#86EFAC;}
+  .receipt-line.warning .tag{color:#FDB022;}
+  .receipt-line.critical .tag{color:#FDA29B;}
+  .risk-chip{border-radius:999px; font-weight:700;}
+  .risk-critical{background:#FEF3F2; color:#B42318;}
+  .risk-high{background:#FFFAEB; color:#B54708;}
+  .risk-medium{background:#ECFDF3; color:#067647;}
+  .risk-low{background:#F2F4F7; color:#475467;}
+  .msg.bot{background:#F2F4F7; color:var(--text);}
+  .msg.user{background:#175CD3; color:#fff;}
+  .chat-input button{background:#175CD3; color:#fff; border-radius:6px;}
+  .chip{border-radius:6px; color:#475467; background:#fff;}
+  .rec-note{background:#FFFAEB; color:#B54708; border-color:#FEDF89;}
+  .api-config{background:#fff; color:#475467; box-shadow:var(--shadow);}
+  .overview{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:14px;
+    margin-bottom:18px;
+  }
+  .metric{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:16px 18px;
+    box-shadow:var(--shadow);
+  }
+  .metric span{
+    display:block;
+    color:var(--text-lo);
+    font:700 10.5px 'IBM Plex Mono',monospace;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+  }
+  .metric strong{
+    display:block;
+    margin-top:8px;
+    font-size:24px;
+    line-height:1.1;
+  }
+  .metric small{display:block; margin-top:6px; color:var(--text-lo);}
+  .target-panel{
+    margin-bottom:18px;
+  }
+  .target-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:14px;
+    align-items:stretch;
+  }
+  .target-card{
+    background:#F9FAFB;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:14px;
+  }
+  .target-card span{
+    display:block;
+    color:#667085;
+    font:700 10.5px 'IBM Plex Mono',monospace;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+  }
+  .target-card strong{
+    display:block;
+    margin-top:7px;
+    font-size:20px;
+  }
+  .target-card small{
+    display:block;
+    color:#667085;
+    margin-top:6px;
+    line-height:1.35;
+  }
+  .progress-track{
+    height:8px;
+    background:#EAECF0;
+    border-radius:999px;
+    overflow:hidden;
+    margin-top:12px;
+  }
+  .progress-track div{
+    height:100%;
+    width:0%;
+    max-width:100%;
+    background:#175CD3;
+  }
+  .calendar-strip{
+    display:grid;
+    grid-template-columns:1fr 1.25fr 1.6fr;
+    gap:14px;
+    margin-bottom:18px;
+    align-items:start;
+  }
+  .calendar-note{
+    background:#fff;
+    color:var(--text);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:16px 18px;
+    box-shadow:var(--shadow);
+    min-height:132px;
+  }
+  .calendar-note span{
+    display:block;
+    color:#667085;
+    font:700 10.5px 'IBM Plex Mono',monospace;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+  }
+  .calendar-note strong{
+    display:block;
+    margin-top:8px;
+    font-size:18px;
+    line-height:1.2;
+  }
+  .calendar-note small{display:block; margin-top:7px; color:#475467; line-height:1.35;}
+  .ai-action-grid{
+    display:grid;
+    grid-template-columns:repeat(5,minmax(0,1fr));
+    gap:8px;
+    margin-bottom:14px;
+  }
+  .ai-action-btn{
+    border:1px solid var(--line);
+    background:#fff;
+    color:#344054;
+    border-radius:6px;
+    padding:9px 10px;
+    font:700 10.5px 'IBM Plex Mono',monospace;
+    text-align:left;
+    cursor:pointer;
+  }
+  .ai-action-btn:hover{border-color:var(--blue); color:var(--blue);}
+  .ai-action-result{
+    background:#F9FAFB;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:14px;
+    min-height:120px;
+  }
+  .ai-action-result h3{
+    margin:0 0 8px;
+    font-size:15px;
+  }
+  .ai-action-result p{
+    margin:0 0 10px;
+    color:#475467;
+    line-height:1.45;
+  }
+  .ai-summary{
+    color:#475467;
+    line-height:1.5;
+    margin-bottom:12px;
+  }
+  .ai-summary h4{
+    margin:10px 0 6px;
+    font-size:14px;
+    color:#101828;
+  }
+  .ai-summary p{
+    margin:0 0 8px;
+  }
+  .ai-summary ul{
+    margin:0 0 10px 18px;
+    padding:0;
+  }
+  .ai-summary li{
+    margin:5px 0;
+  }
+  .ai-summary hr{
+    border:0;
+    border-top:1px solid var(--line);
+    margin:10px 0;
+  }
+  .ai-action-result ol{margin:0; padding-left:20px;}
+  .ai-action-result li{margin:7px 0; color:#344054;}
+  .decision-bar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    margin:12px 0;
+  }
+  .decision-bar button{
+    border:1px solid var(--line);
+    background:#fff;
+    color:#344054;
+    border-radius:6px;
+    padding:7px 10px;
+    font:700 10.5px 'IBM Plex Mono',monospace;
+    cursor:pointer;
+  }
+  .decision-bar button:hover{border-color:var(--blue); color:var(--blue);}
+  .decision-bar .approve{background:#ECFDF3; color:#067647; border-color:#ABEFC6;}
+  .decision-bar .reject{background:#FEF3F2; color:#B42318; border-color:#FECDCA;}
+  .decision-bar .escalate{background:#FFFAEB; color:#B54708; border-color:#FEDF89;}
+  .weather-summary{
+    display:grid;
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:10px;
+    margin:14px 0 12px;
+  }
+  .weather-kpi{
+    background:#F8FAFC;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:10px 12px;
+  }
+  .weather-kpi span{
+    display:block;
+    color:#667085;
+    font:700 10px 'IBM Plex Mono',monospace;
+    text-transform:uppercase;
+  }
+  .weather-kpi strong{
+    display:block;
+    margin-top:5px;
+    font-size:16px;
+  }
+  .weather-card{
+    border-top:4px solid #175CD3;
+  }
+  .weather-card .weather-kpi{
+    background:#F0F6FF;
+    border-color:#B9D6FE;
+  }
+  .weather-card .weather-kpi span{color:#175CD3;}
+  .weather-card .weather-kpi strong{color:#101828;}
+  .forecast-grid{
+    display:grid;
+    grid-template-columns:repeat(7,minmax(86px,1fr));
+    gap:8px;
+  }
+  .forecast-day{
+    background:#fff;
+    border:1px solid #D0D5DD;
+    border-radius:8px;
+    padding:10px;
+    min-height:116px;
+  }
+  .forecast-day .date{
+    color:#344054;
+    font:700 11px 'IBM Plex Mono',monospace;
+  }
+  .forecast-day .condition{
+    margin-top:7px;
+    color:#101828;
+    font-size:12px;
+    line-height:1.25;
+    min-height:32px;
+  }
+  .forecast-day .weather-values{
+    margin-top:9px;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    color:#475467;
+    font:700 10.5px 'IBM Plex Mono',monospace;
+  }
+  .g-wide{grid-template-columns:1.15fr .85fr; margin-top:18px;}
+  .g-aiops{grid-template-columns:1fr 1fr; margin-top:18px;}
+  .g-ops{grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:18px;}
+  .status-pill{
+    display:inline-flex;
+    align-items:center;
+    border-radius:999px;
+    padding:3px 8px;
+    font:700 10px 'IBM Plex Mono',monospace;
+    text-transform:uppercase;
+    background:#F2F4F7;
+    color:#475467;
+  }
+  .status-open,.status-critical{background:#FEF3F2;color:#B42318;}
+  .status-in_progress,.status-warning{background:#FFFAEB;color:#B54708;}
+  .status-resolved,.status-info{background:#ECFDF3;color:#067647;}
+  @media (max-width:900px){
+    header{align-items:flex-start; gap:14px; flex-direction:column;}
+    .top-controls{width:100%; justify-content:space-between;}
+    .overview,.calendar-strip,.ai-action-grid,.weather-summary,.target-grid,.g-wide,.g-aiops,.g-ops{grid-template-columns:1fr;}
+    .forecast-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    main{padding:18px 14px 72px;}
+    .panel,.ticket{padding:15px;}
+    .export-row{flex-wrap:wrap;}
+  }
+
+  /* Refined professional dashboard */
+  body{background:#F5F7F4;}
+  header{padding:14px max(24px,calc((100vw - 1520px)/2));backdrop-filter:blur(14px);box-shadow:0 1px 0 var(--line),0 8px 24px rgba(16,24,40,.04);}
+  .brand .mark{width:38px;height:38px;}
+  .brand h1{font-size:19px;letter-spacing:-.02em;}
+  .brand small{letter-spacing:.08em;text-transform:none;font-size:11px;}
+  .top-controls{gap:8px;}
+  .nav-link{padding:9px 13px;border-radius:8px;background:#fff;color:#475467;transition:.18s ease;}
+  .nav-link:hover{background:#F0F5FF;transform:translateY(-1px);}
+  select{min-width:230px;border-radius:8px;background:#fff;color:#101828;box-shadow:0 1px 2px rgba(16,24,40,.04);}
+  main{padding-top:28px;}
+  .dashboard-hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:20px;}
+  .dashboard-hero h2{margin:0;font-size:28px;letter-spacing:-.035em;color:#101828;}
+  .dashboard-hero p{margin:7px 0 0;color:#667085;font-size:14px;}
+  .dashboard-actions{display:flex;align-items:center;gap:12px;}
+  .refresh-state{color:#667085;font:600 10.5px 'IBM Plex Mono',monospace;text-align:right;}
+  .primary-btn{border:1px solid #175CD3;background:#175CD3;color:#fff;border-radius:8px;padding:10px 14px;font:700 11px 'IBM Plex Mono',monospace;cursor:pointer;box-shadow:0 4px 10px rgba(23,92,211,.2);}
+  .primary-btn:hover{background:#1849A9}.primary-btn:disabled{opacity:.65;cursor:wait;}
+  .page-notice{display:none;margin-bottom:14px;padding:10px 13px;border:1px solid #FEDF89;background:#FFFAEB;color:#B54708;border-radius:8px;font-size:12px;}
+  .overview{gap:16px;}
+  .metric{position:relative;overflow:hidden;border-radius:12px;padding:18px 20px;box-shadow:0 5px 18px rgba(16,24,40,.045);transition:transform .18s ease,box-shadow .18s ease;}
+  .metric:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(16,24,40,.08);}
+  .metric::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:#175CD3;}
+  .metric:nth-child(2)::after{background:#15803D}.metric:nth-child(3)::after{background:#D97706}.metric:nth-child(4)::after{background:#B42318}
+  .metric strong{font-size:27px;letter-spacing:-.035em;color:#101828;}
+  .panel,.ticket,.calendar-note{border-radius:12px;box-shadow:0 5px 20px rgba(16,24,40,.045);transition:box-shadow .18s ease;}
+  .panel:hover,.ticket:hover,.calendar-note:hover{box-shadow:0 10px 30px rgba(16,24,40,.075);}
+  .panel-title{font-size:11px;color:#475467;margin-bottom:16px;}
+  .target-card{border-radius:10px;background:#FCFCFD;}
+  .progress-track div{background:linear-gradient(90deg,#175CD3,#53B1FD);transition:width .55s ease;}
+  .calendar-note{min-height:126px}.weather-card{border-top:1px solid var(--line);border-left:4px solid #175CD3;}
+  .ticket{border-left:4px solid #15803D;}
+  .task-card{transition:transform .16s ease,box-shadow .16s ease}.task-card:hover{transform:translateX(2px);box-shadow:0 8px 20px rgba(16,24,40,.07);}
+  .ai-action-btn{border-radius:8px;transition:.16s ease}.ai-action-btn:hover{background:#F0F5FF;transform:translateY(-1px);}
+  .ai-action-result{border-radius:10px;background:linear-gradient(135deg,#F9FAFB,#F5F8FF);}
+  .chat-box{height:360px}.msg{border-radius:12px;box-shadow:0 2px 5px rgba(16,24,40,.04);}
+  @media(max-width:900px){
+    header{padding:14px}.dashboard-hero{align-items:flex-start;flex-direction:column}.dashboard-actions{width:100%;justify-content:space-between}
+    .top-controls{overflow-x:auto}.nav-link,select{white-space:nowrap}.overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media(max-width:560px){.overview{grid-template-columns:1fr}.dashboard-actions{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark"></div>
+    <div>
+      <h1>ShwapnoOps AI</h1>
+      <small>Outlet Control Panel · Powered by async analytics</small>
+    </div>
+  </div>
+  <div class="top-controls">
+    <a class="nav-link" href="/analytics.html?v=2">Analytics</a>
+    <a class="nav-link" href="/data-tables.html?view=categories">Data Tables</a>
+    <div class="live-pill"><span class="live-dot"></span><span id="wsStatus">Connecting…</span></div>
+    <select id="outletSelect"></select>
+  </div>
+</header>
+
+<main>
+  <section class="dashboard-hero">
+    <div>
+      <h2>Outlet Operations Overview</h2>
+      <p>Live performance, priorities, and AI-assisted decisions from your operational data.</p>
+    </div>
+    <div class="dashboard-actions">
+      <div class="refresh-state" id="refreshState">Preparing dashboard…</div>
+      <button class="primary-btn" id="refreshDashboardBtn">Refresh data</button>
+    </div>
+  </section>
+  <div class="page-notice" id="pageNotice"></div>
+
+  <div class="overview">
+    <div class="metric"><span>Outlet Readiness</span><strong id="metricReadiness">--</strong><small>Composite operating health</small></div>
+    <div class="metric"><span>Revenue Today</span><strong id="metricRevenue">--</strong><small>Live POS demo feed</small></div>
+    <div class="metric"><span>Stock Exceptions</span><strong id="metricStock">--</strong><small>Medium to critical risk</small></div>
+    <div class="metric"><span>Open Issues</span><strong id="metricIssues">--</strong><small>Complaints and critical alerts</small></div>
+  </div>
+
+  <div class="panel target-panel">
+    <div class="panel-title"><span>Sales Target Tracker</span><span id="targetMeta">Targets loaded from DB</span></div>
+    <div class="target-grid">
+      <div class="target-card">
+        <span>Monthly Target</span>
+        <strong id="monthlyTarget">--</strong>
+        <small id="monthlyProgressText">--</small>
+        <div class="progress-track"><div id="monthlyProgressBar"></div></div>
+      </div>
+      <div class="target-card">
+        <span>Weekly Target</span>
+        <strong id="weeklyTarget">--</strong>
+        <small id="weeklyProgressText">--</small>
+        <div class="progress-track"><div id="weeklyProgressBar"></div></div>
+      </div>
+      <div class="target-card">
+        <span>Daily Target</span>
+        <strong id="dailyTarget">--</strong>
+        <small id="dailyProgressText">--</small>
+        <div class="progress-track"><div id="dailyProgressBar"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="calendar-strip">
+    <div class="calendar-note">
+      <span>Local Business Time</span>
+      <strong id="localDateTime">--</strong>
+      <small id="localTimezone">--</small>
+    </div>
+    <div class="calendar-note">
+      <span>Next Festival In 7 Days</span>
+      <strong id="nextFestival">--</strong>
+      <small id="festivalContext">Used by AI action planning and chatbot context</small>
+    </div>
+    <div class="calendar-note weather-card">
+      <span>7-Day Weather Demand Signal</span>
+      <strong id="weatherHeadline">Loading forecast...</strong>
+      <small id="weatherSource">Dhaka</small>
+      <div class="weather-summary" id="weatherSummary"></div>
+      <div class="forecast-grid" id="weatherDays"></div>
+    </div>
+  </div>
+
+  <div class="grid g-top">
+    <div class="ticket" id="scorecard">
+      <div class="score-label">Productivity Score</div>
+      <div class="score-big" id="scProductivity">--</div>
+      <div class="ticket-rows">
+        <div class="ticket-row"><span>Sales today (BDT)</span><b id="scSales">--</b></div>
+        <div class="ticket-row"><span>Sales this month (BDT)</span><b id="scSalesMonth">--</b></div>
+        <div class="ticket-row"><span>Sales this year (BDT)</span><b id="scSalesYear">--</b></div>
+        <div class="ticket-row"><span>Stock health</span><b id="scStock">--</b></div>
+        <div class="ticket-row"><span>Manpower coverage</span><b id="scMan">--</b></div>
+        <div class="ticket-row"><span>Open complaints</span><b id="scComplaints">--</b></div>
+        <div class="ticket-row"><span>Critical alerts</span><b id="scAlerts">--</b></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">
+        <span>AI-Prioritized Task Queue</span>
+        <span class="export-row">
+          <a class="export-btn" id="exportCsv" href="#">Export CSV</a>
+          <a class="export-btn" id="exportPdf" href="#">Daily PDF</a>
+          <button class="export-btn" id="prioritizeBtn">Prioritize queue</button>
+          <button class="export-btn" id="rescanBtn">Rescan now</button>
+        </span>
+      </div>
+      <div class="task-list" id="taskList"></div>
+    </div>
+  </div>
+
+  <div class="grid g-mid">
+    <div class="panel">
+      <div class="panel-title"><span>Sales & Footfall — Last 14 Days</span></div>
+      <div class="sales-native-chart" id="salesChart"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title"><span>Live Ops Receipt</span></div>
+      <div class="receipt-wrap" id="receipt"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span>AI Decision Center</span><span id="aiActionMeta"></span></div>
+    <div class="ai-action-grid">
+      <button class="ai-action-btn" data-purpose="daily_brief">Daily brief</button>
+      <button class="ai-action-btn" data-purpose="stock_replenishment">Stock advisor</button>
+      <button class="ai-action-btn" data-purpose="manpower_reallocation">Manpower plan</button>
+      <button class="ai-action-btn" data-purpose="complaint_triage">Complaint triage</button>
+      <button class="ai-action-btn" data-purpose="delivery_risk">Delivery risk</button>
+      <button class="ai-action-btn" data-purpose="campaign_readiness">Campaign readiness</button>
+      <button class="ai-action-btn" data-purpose="audit_action_plan">Audit action plan</button>
+      <button class="ai-action-btn" data-purpose="festival_preparedness">Festival plan</button>
+      <button class="ai-action-btn" data-purpose="weather_demand">Weather demand</button>
+      <button class="ai-action-btn" data-purpose="root_cause_analysis">Root cause</button>
+      <button class="ai-action-btn" data-purpose="regional_summary">Regional summary</button>
+    </div>
+    <div class="ai-action-result" id="aiActionResult">
+      <h3>Choose an AI option</h3>
+      <p>Select a decision tool above to generate Gemini-assisted operational guidance from the current outlet data.</p>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:18px;">
+    <div class="panel-title"><span>Product Categories</span><span id="categoryCount">-- categories</span></div>
+    <table>
+      <thead><tr><th>ID</th><th>Category</th><th>Availability</th><th>Status</th></tr></thead>
+      <tbody id="categoryTable"></tbody>
+    </table>
+  </div>
+
+  <div class="grid g-aiops">
+    <div class="panel">
+      <div class="panel-title">
+        <span>Production Demand Forecast</span><span id="forecastModel">Gemini</span>
+        <button class="export-btn" id="runForecastBtn">Run forecast</button>
+      </div>
+      <table>
+        <thead><tr><th>Category</th><th>Date</th><th>Predicted</th><th>Gap</th><th>Risk</th></tr></thead>
+        <tbody id="forecastTable"></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-title"><span>AI Approval & Audit Trail</span><span id="auditMeta"></span></div>
+      <table>
+        <thead><tr><th>ID</th><th>Purpose</th><th>Status</th><th>Generated</th></tr></thead>
+        <tbody id="auditTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid g-bot">
+    <div class="panel">
+      <div class="panel-title"><span>Stock-Out Risk by SKU</span></div>
+      <table>
+        <thead><tr><th>SKU</th><th>On hand</th><th>Days cover</th><th>Risk</th></tr></thead>
+        <tbody id="invTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Shift-wise Manpower</span></div>
+      <div id="shiftRows"></div>
+      <div class="rec-note" id="shiftRec" style="display:none;"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Ask ShwapnoOps</span></div>
+      <div class="chips">
+        <div class="chip" data-q="What should I prioritize today?">Top priorities</div>
+        <div class="chip" data-q="Which SKUs are at stock risk?">Stock risk</div>
+        <div class="chip" data-q="How is my manpower coverage?">Manpower</div>
+        <div class="chip" data-q="What is today's date, time and next festival in 7 days?">Calendar</div>
+        <div class="chip" data-q="What's my performance score?">Scorecard</div>
+      </div>
+      <div class="chat-box">
+        <div class="chat-log" id="chatLog"></div>
+        <div class="chat-input">
+          <input id="chatInput" type="text" placeholder="Ask about stock, staffing, complaints…" />
+          <button id="chatSend">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g-wide">
+    <div class="panel">
+      <div class="panel-title"><span>Active Alerts</span></div>
+      <table>
+        <thead><tr><th>Severity</th><th>Type</th><th>Message</th><th>Time</th></tr></thead>
+        <tbody id="alertsTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Customer Issue Desk</span></div>
+      <table>
+        <thead><tr><th>Status</th><th>Category</th><th>Severity</th><th>Issue</th></tr></thead>
+        <tbody id="complaintsTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid g-ops">
+    <div class="panel">
+      <div class="panel-title"><span>Inventory Movement Ledger</span></div>
+      <table>
+        <thead><tr><th>Type</th><th>SKU</th><th>Qty</th><th>Reference</th></tr></thead>
+        <tbody id="movementTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Stock-Out History</span></div>
+      <table>
+        <thead><tr><th>SKU</th><th>Root cause</th><th>Lost sales</th><th>Status</th></tr></thead>
+        <tbody id="stockOutTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Promotion & Campaign Calendar</span></div>
+      <table>
+        <thead><tr><th>Campaign</th><th>Category</th><th>Dates</th><th>Status</th></tr></thead>
+        <tbody id="promoTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Delivery Schedule</span></div>
+      <table>
+        <thead><tr><th>Supplier</th><th>SKU</th><th>ETA</th><th>Status</th></tr></thead>
+        <tbody id="deliveryTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Seasonal Sales Trends</span></div>
+      <table>
+        <thead><tr><th>Event</th><th>Focus</th><th>Uplift</th><th>Window</th></tr></thead>
+        <tbody id="seasonalTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Store Audit Reports</span></div>
+      <table>
+        <thead><tr><th>Date</th><th>Score</th><th>Finding</th><th>Action</th></tr></thead>
+        <tbody id="auditTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>Manual Manager Issues</span></div>
+      <table>
+        <thead><tr><th>Status</th><th>Category</th><th>Severity</th><th>Issue</th></tr></thead>
+        <tbody id="manualIssueTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<div class="api-config">
+  API: <input id="apiBase" value="" />
+</div>
+
+<script>
+const apiInput = document.getElementById('apiBase');
+apiInput.value = `${window.location.protocol}//${window.location.hostname}:8000`;
+let API = apiInput.value;
+let currentOutlet = null;
+let ws = null;
+let businessClock = null;
+
+apiInput.addEventListener('change', (e) => {
+  API = e.target.value.replace(/\/$/, '');
+  boot();
+});
+
+function fmtMoney(n){ return Number(n).toLocaleString('en-BD', {maximumFractionDigits:0}); }
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+function timeAgo(iso){
+  const d = new Date(iso + (iso.endsWith('Z')?'':'Z'));
+  return d.toLocaleTimeString('en-GB', {hour:'2-digit', minute:'2-digit'});
+}
+function shortDate(value){
+  if(!value) return '—';
+  return new Date(value + (String(value).includes('T') ? (String(value).endsWith('Z') ? '' : 'Z') : 'T00:00:00')).toLocaleDateString('en-GB', {day:'2-digit', month:'short'});
+}
+function formatBusinessDateTime(date, timezone){
+  const datePart = new Intl.DateTimeFormat('en-GB', {day:'2-digit', month:'short', timeZone:timezone}).format(date);
+  const timePart = new Intl.DateTimeFormat('en-GB', {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false, timeZone:timezone}).format(date);
+  return `${datePart} · ${timePart}`;
+}
+function renderBusinessClock(){
+  if(!businessClock) return;
+  const elapsed = Date.now() - businessClock.clientStartedAt;
+  const current = new Date(businessClock.serverStartedAt + elapsed);
+  document.getElementById('localDateTime').textContent = formatBusinessDateTime(current, businessClock.timezone);
+}
+function startBusinessClock(data){
+  if(businessClock?.timer) clearInterval(businessClock.timer);
+  businessClock = {
+    timezone: data.timezone,
+    serverStartedAt: new Date(data.local_datetime).getTime(),
+    clientStartedAt: Date.now(),
+    timer: null,
+  };
+  renderBusinessClock();
+  businessClock.timer = setInterval(renderBusinessClock, 1000);
+}
+
+async function api(path){
+  const res = await fetch(`${API}${path}`);
+  if(!res.ok) throw new Error(`${path} -> ${res.status}`);
+  return res.json();
+}
+
+async function loadOutlets(){
+  const outlets = await api('/api/outlets');
+  const sel = document.getElementById('outletSelect');
+  sel.innerHTML = outlets.map(o => `<option value="${o.id}">${o.name} — ${o.manager_name}</option>`).join('');
+  currentOutlet = outlets[0]?.id;
+  sel.addEventListener('change', (e) => {
+    currentOutlet = Number(e.target.value);
+    connectWS();
+    refreshAll();
+  });
+}
+
+function riskClass(r){
+  return {critical:'risk-critical', high:'risk-high', medium:'risk-medium', low:'risk-low', unknown:'risk-low'}[r] || 'risk-low';
+}
+
+function setProgressBar(id, pct){
+  document.getElementById(id).style.width = `${Math.min(100, Math.max(0, Number(pct) || 0))}%`;
+}
+
+async function loadScorecard(){
+  const c = await api(`/api/dashboard/scorecards/${currentOutlet}`);
+  document.getElementById('scProductivity').textContent = c.productivity_score;
+  document.getElementById('scSales').textContent = '৳ ' + fmtMoney(c.sales_today);
+  document.getElementById('scSalesMonth').textContent = '৳ ' + fmtMoney(c.sales_current_month);
+  document.getElementById('scSalesYear').textContent = '৳ ' + fmtMoney(c.sales_current_year);
+  document.getElementById('scStock').textContent = c.stock_health_pct + '%';
+  document.getElementById('scMan').textContent = c.manpower_coverage_pct + '%';
+  document.getElementById('scComplaints').textContent = c.open_complaints;
+  document.getElementById('scAlerts').textContent = c.critical_alerts;
+  document.getElementById('metricReadiness').textContent = c.productivity_score + '/100';
+  document.getElementById('metricRevenue').textContent = '৳ ' + fmtMoney(c.sales_today);
+  document.getElementById('metricIssues').textContent = c.open_complaints + c.critical_alerts;
+}
+
+async function loadSalesTargets(){
+  const t = await api(`/api/targets/progress?outlet_id=${currentOutlet}`);
+  document.getElementById('monthlyTarget').textContent = '৳ ' + fmtMoney(t.monthly_target);
+  document.getElementById('weeklyTarget').textContent = '৳ ' + fmtMoney(t.weekly_target);
+  document.getElementById('dailyTarget').textContent = '৳ ' + fmtMoney(t.daily_target);
+  document.getElementById('monthlyProgressText').textContent = `৳ ${fmtMoney(t.month_sales)} achieved · ${t.month_achievement_pct}% · gap ৳ ${fmtMoney(t.month_gap)}`;
+  document.getElementById('weeklyProgressText').textContent = `৳ ${fmtMoney(t.week_sales)} achieved · ${t.week_achievement_pct}% · gap ৳ ${fmtMoney(t.week_gap)}`;
+  document.getElementById('dailyProgressText').textContent = `৳ ${fmtMoney(t.today_sales)} achieved · ${t.today_achievement_pct}% · gap ৳ ${fmtMoney(t.today_gap)}`;
+  document.getElementById('targetMeta').textContent = `${String(t.month).padStart(2,'0')}/${t.year} · DB target · ${t.weeks_in_month} weeks · ${t.days_in_month} days`;
+  setProgressBar('monthlyProgressBar', t.month_achievement_pct);
+  setProgressBar('weeklyProgressBar', t.week_achievement_pct);
+  setProgressBar('dailyProgressBar', t.today_achievement_pct);
+}
+
+async function loadTasks(){
+  const tasks = await api(`/api/tasks?outlet_id=${currentOutlet}&status=pending`);
+  const list = document.getElementById('taskList');
+  if(!tasks.length){
+    list.innerHTML = '<div class="empty-note">No pending tasks — outlet is fully caught up.</div>';
+    return;
+  }
+  list.innerHTML = tasks.map(t => {
+    const cls = t.priority_score >= 70 ? 'urgent' : (t.priority_score >= 40 ? 'warn' : '');
+    return `<div class="task-card ${cls}">
+      <div class="score">${Math.round(t.priority_score)}</div>
+      <div>
+        <div class="title">${escapeHtml(t.title)}</div>
+        <div class="meta">${t.source} · ${t.due_at ? 'due ' + timeAgo(t.due_at) : 'no deadline'}</div>
+      </div>
+      <button onclick="completeTask(${t.id})">Mark done</button>
+    </div>`;
+  }).join('');
+}
+
+function showTaskQueueLoading(){
+  const list = document.getElementById('taskList');
+  list.innerHTML = Array.from({length:5}).map((_, idx) => `
+    <div class="task-card loading">
+      <div class="score">${idx + 1}</div>
+      <div>
+        <span class="skeleton-line long"></span>
+        <span class="skeleton-line short"></span>
+      </div>
+      <button disabled>Rank</button>
+    </div>
+  `).join('');
+}
+
+function renderAiActionLoading(label){
+  document.getElementById('aiActionResult').innerHTML = `
+    <h3>${escapeHtml(label)}</h3>
+    <p>Gemini is analyzing the latest outlet data...</p>
+    <div class="task-card loading">
+      <div class="score">AI</div>
+      <div>
+        <span class="skeleton-line long"></span>
+        <span class="skeleton-line short"></span>
+      </div>
+      <button disabled>Run</button>
+    </div>
+  `;
+}
+
+function formatInlineMarkdown(value){
+  return escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+}
+
+function renderMarkdownSummary(value){
+  const lines = String(value || '').split(/\n+/).map(line => line.trim()).filter(Boolean);
+  let html = '';
+  let inList = false;
+  const closeList = () => {
+    if(inList){
+      html += '</ul>';
+      inList = false;
+    }
+  };
+
+  lines.forEach(line => {
+    if(/^-{3,}$/.test(line)){
+      closeList();
+      html += '<hr />';
+      return;
+    }
+    if(/^#{1,6}\s+/.test(line)){
+      closeList();
+      html += `<h4>${formatInlineMarkdown(line.replace(/^#{1,6}\s+/, ''))}</h4>`;
+      return;
+    }
+    if(/^\*\s+/.test(line)){
+      if(!inList){
+        html += '<ul>';
+        inList = true;
+      }
+      html += `<li>${formatInlineMarkdown(line.replace(/^\*\s+/, ''))}</li>`;
+      return;
+    }
+    closeList();
+    html += `<p>${formatInlineMarkdown(line)}</p>`;
+  });
+  closeList();
+  return html || '<p>No summary returned.</p>';
+}
+
+function renderAiAction(data){
+  document.getElementById('aiActionMeta').textContent = `${data.generated_by}${data.model ? ' · ' + data.model : ''}`;
+  const actions = data.actions?.length ? data.actions.map(a => `
+    <li>
+      <b>${escapeHtml(a.title)}</b><br />
+      ${escapeHtml(a.rationale)} <span class="status-pill status-${a.urgency === 'high' ? 'critical' : 'info'}">${escapeHtml(a.urgency)}</span>
+    </li>
+  `).join('') : '<li>No action items returned.</li>';
+  const workflow = data.recommendation_id ? `
+    <div class="decision-bar">
+      <span class="status-pill status-warning">ID ${data.recommendation_id} · ${escapeHtml(data.approval_status || 'pending_approval').replaceAll('_',' ')}</span>
+      <button class="approve" onclick="decideRecommendation(${data.recommendation_id}, 'approve')">Approve</button>
+      <button class="reject" onclick="decideRecommendation(${data.recommendation_id}, 'reject')">Reject</button>
+      <button class="escalate" onclick="escalateRecommendation(${data.recommendation_id})">Escalate</button>
+    </div>
+  ` : '';
+  document.getElementById('aiActionResult').innerHTML = `
+    <h3>${escapeHtml(data.purpose.replaceAll('_',' '))}</h3>
+    <div class="ai-summary">${renderMarkdownSummary(data.summary)}</div>
+    ${workflow}
+    <ol>${actions}</ol>
+  `;
+  loadRecommendationAudit();
+}
+
+async function loadRecommendationAudit(){
+  const rows = await api(`/api/ai/recommendations?outlet_id=${currentOutlet}&limit=8`);
+  document.getElementById('auditMeta').textContent = `${rows.length} recent`;
+  document.getElementById('auditTable').innerHTML = rows.map(row => `
+    <tr>
+      <td>#${row.id}</td>
+      <td>${escapeHtml(row.purpose.replaceAll('_',' '))}</td>
+      <td><span class="status-pill status-${row.status === 'approved' || row.status === 'implemented' ? 'resolved' : row.status === 'rejected' ? 'critical' : 'warning'}">${escapeHtml(row.status.replaceAll('_',' '))}</span></td>
+      <td>${timeAgo(row.created_at)}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="4">No AI recommendations yet.</td></tr>';
+}
+
+async function decideRecommendation(id, action){
+  const note = action === 'approve' ? 'Approved from outlet dashboard.' : 'Rejected from outlet dashboard.';
+  await fetch(`${API}/api/ai/recommendations/${id}/${action}`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({reviewed_by:'Outlet Manager', note})
+  });
+  appendReceiptLine('info', `AI recommendation #${id} ${action}d.`, null);
+  loadRecommendationAudit();
+}
+
+async function escalateRecommendation(id){
+  await fetch(`${API}/api/ai/recommendations/${id}/escalate`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({escalated_to:'Area Manager', reason:'Outlet manager requested supervisor review.'})
+  });
+  appendReceiptLine('warning', `AI recommendation #${id} escalated to Area Manager.`, null);
+  loadRecommendationAudit();
+}
+window.decideRecommendation = decideRecommendation;
+window.escalateRecommendation = escalateRecommendation;
+
+async function completeTask(id){
+  await fetch(`${API}/api/tasks/${id}`, {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({status:'done'})
+  });
+  loadTasks();
+  loadScorecard();
+}
+window.completeTask = completeTask;
+
+async function loadInventory(){
+  const items = await api(`/api/inventory?outlet_id=${currentOutlet}`);
+  const risky = items.filter(i => i.risk_level !== 'low').sort((a,b)=> (a.days_of_cover??999) - (b.days_of_cover??999));
+  const rows = (risky.length ? risky : items).slice(0,8);
+  document.getElementById('metricStock').textContent = risky.length;
+  document.getElementById('invTable').innerHTML = rows.map(i => `
+    <tr>
+      <td>${escapeHtml(i.sku)}</td>
+      <td>${i.on_hand_units}</td>
+      <td>${i.days_of_cover ?? '—'}</td>
+      <td><span class="risk-chip ${riskClass(i.risk_level)}">${i.risk_level}</span></td>
+    </tr>`).join('');
+}
+
+async function loadShifts(){
+  const data = await api(`/api/manpower/optimize?outlet_id=${currentOutlet}`);
+  document.getElementById('shiftRows').innerHTML = data.shifts.map(s => {
+    const pct = s.required_staff ? Math.round(100*s.present_staff/s.required_staff) : 100;
+    const barCls = pct < 60 ? 'low' : (pct < 85 ? 'mid' : '');
+    return `<div class="shift-row">
+      <div class="shift-name">${s.shift}</div>
+      <div class="shift-bar ${barCls}"><div style="width:${Math.min(pct,100)}%"></div></div>
+      <div class="shift-pct">${pct}%</div>
+    </div>`;
+  }).join('');
+  const recEl = document.getElementById('shiftRec');
+  if(data.recommendation){
+    recEl.style.display = 'block';
+    recEl.textContent = '→ ' + data.recommendation;
+  } else {
+    recEl.style.display = 'none';
+  }
+}
+
+async function loadSalesChart(){
+  const trend = await api(`/api/sales/trend?outlet_id=${currentOutlet}&days=14`);
+  const el = document.getElementById('salesChart');
+  if(!trend.length){
+    el.innerHTML = '<div class="empty-note">No sales or footfall data for this period.</div>';
+    return;
+  }
+  const labels = trend.map(t => t.date.slice(5));
+  const revenue = trend.map(t => Math.round(t.revenue));
+  const footfall = trend.map(t => t.footfall);
+  const width = 900, height = 270, left = 54, right = 42, top = 22, bottom = 38;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const maxRevenue = Math.max(...revenue, 1);
+  const maxFootfall = Math.max(...footfall, 1);
+  const step = plotWidth / trend.length;
+  const bars = revenue.map((value, index) => {
+    const barHeight = value / maxRevenue * plotHeight;
+    const x = left + index * step + step * .16;
+    const y = top + plotHeight - barHeight;
+    return `<rect x="${x}" y="${y}" width="${step * .68}" height="${barHeight}" rx="3" fill="#D97706" opacity=".82"><title>${labels[index]} · Revenue BDT ${value.toLocaleString('en-BD')}</title></rect>`;
+  }).join('');
+  const points = footfall.map((value, index) => {
+    const x = left + index * step + step / 2;
+    const y = top + plotHeight - value / maxFootfall * plotHeight;
+    return `${x},${y}`;
+  }).join(' ');
+  const dots = footfall.map((value, index) => {
+    const x = left + index * step + step / 2;
+    const y = top + plotHeight - value / maxFootfall * plotHeight;
+    return `<circle cx="${x}" cy="${y}" r="3.5" fill="#15803D"><title>${labels[index]} · Footfall ${value.toLocaleString('en-BD')}</title></circle>`;
+  }).join('');
+  const xLabels = labels.map((label, index) => {
+    const x = left + index * step + step / 2;
+    return `<text x="${x}" y="${height - 12}" text-anchor="middle" font-size="9.5" fill="#667085">${label}</text>`;
+  }).join('');
+  const grid = Array.from({length:5}, (_, index) => {
+    const y = top + index * plotHeight / 4;
+    return `<line x1="${left}" y1="${y}" x2="${width-right}" y2="${y}" stroke="rgba(23,32,28,.09)"/>`;
+  }).join('');
+  el.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Sales and footfall for the last 14 days">
+      ${grid}${bars}
+      <polyline points="${points}" fill="none" stroke="#15803D" stroke-width="3" stroke-linejoin="round"/>
+      ${dots}${xLabels}
+    </svg>
+    <div class="sales-chart-legend"><span style="color:#D97706">■ Revenue (BDT)</span><span style="color:#15803D">● Footfall</span></div>`;
+}
+
+async function loadAlertsInitial(){
+  const alerts = await api(`/api/alerts?outlet_id=${currentOutlet}`);
+  const wrap = document.getElementById('receipt');
+  wrap.innerHTML = '';
+  alerts.slice(0,15).forEach(a => appendReceiptLine(a.severity, a.message, a.created_at));
+  document.getElementById('alertsTable').innerHTML = alerts.slice(0,8).map(a => `
+    <tr>
+      <td><span class="status-pill status-${a.severity}">${a.severity}</span></td>
+      <td>${escapeHtml(a.type.replaceAll('_',' '))}</td>
+      <td>${escapeHtml(a.message)}</td>
+      <td>${timeAgo(a.created_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="4">No active alerts.</td></tr>';
+}
+
+function appendReceiptLine(severity, message, createdAt){
+  const wrap = document.getElementById('receipt');
+  const line = document.createElement('div');
+  line.className = `receipt-line ${severity}`;
+  const time = createdAt ? timeAgo(createdAt) : new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  line.innerHTML = `<span>${time}</span><span class="tag">[${severity.toUpperCase()}]</span><span>${escapeHtml(message)}</span>`;
+  wrap.prepend(line);
+}
+
+async function loadComplaints(){
+  const complaints = await api(`/api/complaints?outlet_id=${currentOutlet}`);
+  document.getElementById('complaintsTable').innerHTML = complaints.slice(0,8).map(c => `
+    <tr>
+      <td><span class="status-pill status-${c.status}">${escapeHtml(c.status.replaceAll('_',' '))}</span></td>
+      <td>${escapeHtml(c.category)}</td>
+      <td>${c.severity}/5</td>
+      <td>${escapeHtml(c.description)}</td>
+    </tr>`).join('') || '<tr><td colspan="4">No customer issues logged.</td></tr>';
+}
+
+async function loadCalendarContext(){
+  const data = await api(`/api/operations/calendar-context?outlet_id=${currentOutlet}`);
+  startBusinessClock(data);
+  document.getElementById('localTimezone').textContent = data.timezone;
+  if(data.next_festival){
+    document.getElementById('nextFestival').textContent = `${data.next_festival.name} in ${data.next_festival.days_until_start} day(s)`;
+    document.getElementById('festivalContext').textContent = `${data.next_festival.category_focus} · expected uplift ${data.next_festival.uplift_pct}%`;
+  } else {
+    document.getElementById('nextFestival').textContent = `No festival in next ${data.lookahead_days} days`;
+    if(data.next_known_festival){
+      document.getElementById('festivalContext').textContent = `Next known: ${data.next_known_festival.name} in ${data.next_known_festival.days_until_start} day(s) · ${data.next_known_festival.category_focus}`;
+    } else {
+      document.getElementById('festivalContext').textContent = 'No upcoming seasonal event found in the calendar';
+    }
+  }
+}
+
+async function loadWeatherContext(){
+  document.getElementById('weatherHeadline').textContent = 'Loading forecast...';
+  document.getElementById('weatherSource').textContent = 'Dhaka';
+  document.getElementById('weatherSummary').innerHTML = `
+    <div class="weather-kpi"><span>Rainy days</span><strong>--</strong></div>
+    <div class="weather-kpi"><span>Humid days</span><strong>--</strong></div>
+    <div class="weather-kpi"><span>Avg feels</span><strong>--</strong></div>
+    <div class="weather-kpi"><span>Total rain</span><strong>--</strong></div>
+  `;
+  document.getElementById('weatherDays').innerHTML = '<div class="forecast-day"><div class="condition">Fetching weather forecast...</div></div>';
+
+  let data;
+  try{
+    data = await api(`/api/operations/weather-context?outlet_id=${currentOutlet}`);
+  }catch(e){
+    document.getElementById('weatherHeadline').textContent = 'Weather forecast unavailable';
+    document.getElementById('weatherDays').innerHTML = '<div class="forecast-day"><div class="condition">Could not load weather data from the API.</div></div>';
+    return;
+  }
+  const summary = data.summary || {};
+  document.getElementById('weatherSource').textContent = data.district || 'Dhaka';
+  document.getElementById('weatherHeadline').textContent = `${summary.rainy_days ?? 0} rainy day(s), ${summary.high_humidity_days ?? 0} humid day(s)`;
+  document.getElementById('weatherSummary').innerHTML = `
+    <div class="weather-kpi"><span>Rainy days</span><strong>${summary.rainy_days ?? 0}</strong></div>
+    <div class="weather-kpi"><span>Humid days</span><strong>${summary.high_humidity_days ?? 0}</strong></div>
+    <div class="weather-kpi"><span>Avg feels</span><strong>${summary.avg_feels_like ?? '—'}°C</strong></div>
+    <div class="weather-kpi"><span>Total rain</span><strong>${summary.total_precipitation ?? 0} mm</strong></div>
+  `;
+  if(data.error){
+    document.getElementById('weatherDays').innerHTML = `<div class="forecast-day"><div class="condition">Weather API unavailable: ${escapeHtml(data.error)}</div></div>`;
+    return;
+  }
+  document.getElementById('weatherDays').innerHTML = (data.daily || []).map(day => `
+    <div class="forecast-day">
+      <div class="date">${shortDate(day.date)}</div>
+      <div class="condition">${escapeHtml(day.conditions)}</div>
+      <div class="weather-values">
+        <span>Feels ${day.feels_like}°C</span>
+        <span>Rain ${day.precipitation_probability}%</span>
+        <span>${day.precipitation} mm</span>
+      </div>
+    </div>
+  `).join('') || '<div class="forecast-day"><div class="condition">No weather forecast returned.</div></div>';
+}
+
+async function loadDemandForecasts(){
+  const rows = await api(`/api/forecasts/demand?outlet_id=${currentOutlet}&limit=10`);
+  document.getElementById('forecastModel').textContent = rows[0]?.model_name || 'Gemini';
+  document.getElementById('forecastTable').innerHTML = rows.map(row => `
+    <tr>
+      <td>${escapeHtml(row.category)}</td>
+      <td>${shortDate(row.forecast_date)}</td>
+      <td>${row.predicted_units}</td>
+      <td>${row.projected_gap_units}</td>
+      <td><span class="risk-chip ${riskClass(row.risk_level)}">${escapeHtml(row.risk_level)}</span></td>
+    </tr>
+  `).join('') || '<tr><td colspan="5">No forecast yet. Run the forecast model.</td></tr>';
+}
+
+async function loadCategories(){
+  const rows = await api(`/api/categories/summary?outlet_id=${currentOutlet}`);
+  document.getElementById('categoryCount').textContent = `${rows.length} categories`;
+  document.getElementById('categoryTable').innerHTML = rows.map(row => `
+    <tr>
+      <td>${row.id}</td>
+      <td>${escapeHtml(row.name)}</td>
+      <td><span class="status-pill ${row.product_count > 0 ? 'status-resolved' : 'status-open'}">${row.product_count > 0 ? 'Available' : 'Not available'}</span></td>
+      <td><span class="status-pill ${row.is_active ? 'status-resolved' : 'status-open'}">${row.is_active ? 'active' : 'inactive'}</span></td>
+    </tr>
+  `).join('') || '<tr><td colspan="4">No product categories.</td></tr>';
+}
+
+async function loadOperationalData(){
+  const [movements, stockOuts, promos, deliveries, seasons, audits, manualIssues] = await Promise.all([
+    api(`/api/operations/inventory-movements?outlet_id=${currentOutlet}&limit=8`),
+    api(`/api/operations/stock-outs?outlet_id=${currentOutlet}&limit=8`),
+    api(`/api/operations/promotions?outlet_id=${currentOutlet}`),
+    api(`/api/operations/deliveries?outlet_id=${currentOutlet}`),
+    api(`/api/operations/seasonal-events?outlet_id=${currentOutlet}`),
+    api(`/api/operations/audit-reports?outlet_id=${currentOutlet}&limit=4`),
+    api(`/api/operations/manual-issues?outlet_id=${currentOutlet}&limit=8`),
+  ]);
+
+  document.getElementById('movementTable').innerHTML = movements.map(m => `
+    <tr>
+      <td><span class="status-pill">${escapeHtml(m.movement_type.replaceAll('_',' '))}</span></td>
+      <td>${escapeHtml(m.sku)}</td>
+      <td>${m.quantity}</td>
+      <td>${escapeHtml(m.reference)}</td>
+    </tr>`).join('') || '<tr><td colspan="4">No movement records.</td></tr>';
+
+  document.getElementById('stockOutTable').innerHTML = stockOuts.map(s => `
+    <tr>
+      <td>${escapeHtml(s.sku)}</td>
+      <td>${escapeHtml(s.root_cause)}</td>
+      <td>৳ ${fmtMoney(s.estimated_lost_sales)}</td>
+      <td><span class="status-pill ${s.resolved_at ? 'status-resolved' : 'status-open'}">${s.resolved_at ? 'resolved' : 'open'}</span></td>
+    </tr>`).join('') || '<tr><td colspan="4">No stock-out history.</td></tr>';
+
+  document.getElementById('promoTable').innerHTML = promos.map(p => `
+    <tr>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.category)}</td>
+      <td>${shortDate(p.start_date)}-${shortDate(p.end_date)}</td>
+      <td><span class="status-pill status-${p.status}">${escapeHtml(p.status)}</span></td>
+    </tr>`).join('') || '<tr><td colspan="4">No campaigns scheduled.</td></tr>';
+
+  document.getElementById('deliveryTable').innerHTML = deliveries.map(d => `
+    <tr>
+      <td>${escapeHtml(d.supplier)}</td>
+      <td>${escapeHtml(d.sku)}</td>
+      <td>${shortDate(d.scheduled_date)} ${escapeHtml(d.eta_window)}</td>
+      <td><span class="status-pill status-${d.status}">${escapeHtml(d.status.replaceAll('_',' '))}</span></td>
+    </tr>`).join('') || '<tr><td colspan="4">No deliveries scheduled.</td></tr>';
+
+  document.getElementById('seasonalTable').innerHTML = seasons.map(s => `
+    <tr>
+      <td>${escapeHtml(s.name)}</td>
+      <td>${escapeHtml(s.category_focus)}</td>
+      <td>${s.uplift_pct}%</td>
+      <td>${shortDate(s.start_date)}-${shortDate(s.end_date)}</td>
+    </tr>`).join('') || '<tr><td colspan="4">No seasonal events.</td></tr>';
+
+  document.getElementById('auditTable').innerHTML = audits.map(a => `
+    <tr>
+      <td>${shortDate(a.audit_date)}</td>
+      <td>${a.score_pct}%</td>
+      <td>${escapeHtml(a.findings)}</td>
+      <td>${escapeHtml(a.corrective_action)}</td>
+    </tr>`).join('') || '<tr><td colspan="4">No audit reports.</td></tr>';
+
+  document.getElementById('manualIssueTable').innerHTML = manualIssues.map(i => `
+    <tr>
+      <td><span class="status-pill status-${i.status}">${escapeHtml(i.status)}</span></td>
+      <td>${escapeHtml(i.category)}</td>
+      <td>${i.severity}/5</td>
+      <td>${escapeHtml(i.title)}</td>
+    </tr>`).join('') || '<tr><td colspan="4">No manual issues reported.</td></tr>';
+}
+
+function connectWS(){
+  if(ws) ws.close();
+  const wsUrl = API.replace('http', 'ws') + `/ws/outlet/${currentOutlet}`;
+  try{
+    ws = new WebSocket(wsUrl);
+    ws.onopen = () => document.getElementById('wsStatus').textContent = 'Live';
+    ws.onclose = () => document.getElementById('wsStatus').textContent = 'Disconnected';
+    ws.onerror = () => document.getElementById('wsStatus').textContent = 'Offline';
+    ws.onmessage = (evt) => {
+      const data = JSON.parse(evt.data);
+      if(data.event === 'alert'){
+        appendReceiptLine(data.severity, data.message, data.created_at);
+        loadTasks();
+        loadScorecard();
+      }
+    };
+  }catch(e){ document.getElementById('wsStatus').textContent = 'Offline'; }
+}
+
+async function refreshAll(){
+  const refreshBtn = document.getElementById('refreshDashboardBtn');
+  const refreshState = document.getElementById('refreshState');
+  const notice = document.getElementById('pageNotice');
+  refreshBtn.disabled = true;
+  refreshBtn.textContent = 'Refreshing…';
+  refreshState.textContent = 'Syncing live data…';
+  notice.style.display = 'none';
+  const jobs = [
+    ['scorecard', loadScorecard()], ['targets', loadSalesTargets()], ['tasks', loadTasks()],
+    ['inventory', loadInventory()], ['categories', loadCategories()], ['manpower', loadShifts()],
+    ['sales', loadSalesChart()], ['alerts', loadAlertsInitial()], ['complaints', loadComplaints()],
+    ['operations', loadOperationalData()], ['calendar', loadCalendarContext()],
+    ['weather', loadWeatherContext()], ['forecasts', loadDemandForecasts()],
+    ['AI audit', loadRecommendationAudit()]
+  ];
+  const results = await Promise.allSettled(jobs.map(job => job[1]));
+  const failed = results
+    .map((result,index) => result.status === 'rejected' ? jobs[index][0] : null)
+    .filter(Boolean);
+  document.getElementById('exportCsv').href = `${API}/api/dashboard/export/tasks.csv?outlet_id=${currentOutlet}`;
+  document.getElementById('exportPdf').href = `${API}/api/dashboard/export/summary.pdf?outlet_id=${currentOutlet}`;
+  refreshState.textContent = `Updated ${new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}`;
+  refreshBtn.disabled = false;
+  refreshBtn.textContent = 'Refresh data';
+  if(failed.length){
+    notice.textContent = `Some sections could not refresh: ${failed.join(', ')}. Available data is still shown.`;
+    notice.style.display = 'block';
+  }
+}
+
+document.getElementById('refreshDashboardBtn').addEventListener('click', refreshAll);
+
+document.getElementById('runForecastBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('runForecastBtn');
+  btn.disabled = true;
+  btn.textContent = 'Running...';
+  document.getElementById('forecastTable').innerHTML = '<tr><td colspan="5">Forecast model is calculating demand...</td></tr>';
+  try{
+    const response = await fetch(`${API}/api/forecasts/demand/run?outlet_id=${currentOutlet}&horizon_days=7`, {method:'POST'});
+    const result = await response.json();
+    if(!response.ok) throw new Error(result.detail || 'Gemini forecast failed');
+    document.getElementById('forecastModel').textContent = result.model_name;
+    await loadDemandForecasts();
+    appendReceiptLine('info', 'Production demand forecast refreshed.', null);
+  }catch(e){
+    document.getElementById('forecastTable').innerHTML = `<tr><td colspan="5">${escapeHtml(e.message)}</td></tr>`;
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Run forecast';
+  }
+});
+
+document.getElementById('rescanBtn').addEventListener('click', async () => {
+  await fetch(`${API}/api/alerts/scan?outlet_id=${currentOutlet}`, {method:'POST'});
+  refreshAll();
+});
+
+document.getElementById('prioritizeBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('prioritizeBtn');
+  btn.disabled = true;
+  btn.textContent = 'Prioritizing...';
+  showTaskQueueLoading();
+  try{
+    const res = await fetch(`${API}/api/tasks/prioritize?outlet_id=${currentOutlet}`, {method:'POST'});
+    const data = await res.json();
+    if(data.generated_by){
+      appendReceiptLine('info', `Task queue prioritized by ${data.generated_by}${data.model ? ' (' + data.model + ')' : ''}.`, data.prioritized_at);
+    }
+    await refreshAll();
+  }catch(e){
+    appendReceiptLine('warning', 'Task prioritization failed. Showing the latest saved queue.', null);
+    await loadTasks();
+  }finally{
+    btn.disabled = false;
+    btn.textContent = 'Prioritize queue';
+  }
+});
+
+document.querySelectorAll('.ai-action-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const purpose = btn.dataset.purpose;
+    const label = btn.textContent;
+    document.querySelectorAll('.ai-action-btn').forEach(b => b.disabled = true);
+    renderAiActionLoading(label);
+    try{
+      const res = await fetch(`${API}/api/ai/actions`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({outlet_id: currentOutlet, purpose})
+      });
+      const data = await res.json();
+      renderAiAction(data);
+      appendReceiptLine('info', `${label} generated by ${data.generated_by}${data.model ? ' (' + data.model + ')' : ''}.`, null);
+    }catch(e){
+      document.getElementById('aiActionResult').innerHTML = '<h3>AI option failed</h3><p>Could not generate guidance. Check the API connection and Gemini configuration.</p>';
+    }finally{
+      document.querySelectorAll('.ai-action-btn').forEach(b => b.disabled = false);
+    }
+  });
+});
+
+/* ---- Chatbot ---- */
+function addChatMsg(text, who){
+  const log = document.getElementById('chatLog');
+  const el = document.createElement('div');
+  el.className = `msg ${who}`;
+  el.textContent = text;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function sendChat(text){
+  if(!text.trim()) return;
+  addChatMsg(text, 'user');
+  document.getElementById('chatInput').value = '';
+  try{
+    const res = await fetch(`${API}/api/chat`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({outlet_id: currentOutlet, message: text})
+    });
+    const data = await res.json();
+    addChatMsg(data.reply, 'bot');
+  }catch(e){
+    addChatMsg("Couldn't reach the assistant — check the API connection.", 'bot');
+  }
+}
+
+document.getElementById('chatSend').addEventListener('click', () => sendChat(document.getElementById('chatInput').value));
+document.getElementById('chatInput').addEventListener('keydown', (e) => { if(e.key==='Enter') sendChat(e.target.value); });
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => sendChat(c.dataset.q)));
+
+async function boot(){
+  try{
+    await loadOutlets();
+    connectWS();
+    await refreshAll();
+    addChatMsg("Hi, I'm your ShwapnoOps assistant. Ask me about today's priorities, stock, staffing or complaints.", 'bot');
+  }catch(e){
+    console.error(e);
+    document.getElementById('wsStatus').textContent = 'API unreachable';
+  }
+}
+boot();
+</script>
+</body>
+</html>

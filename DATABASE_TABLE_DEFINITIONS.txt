@@ -1,0 +1,479 @@
+ShwapnoOps AI Database Table Definitions
+=========================================
+
+Database file:
+backend/shwapno_ops.db
+
+In simple words, this database stores outlet operations data: outlets, sales,
+stock, staff, complaints, alerts, tasks, campaigns, deliveries, seasonal events,
+audits, and manager-reported issues.
+
+
+1. outlets
+----------
+What it stores:
+Basic information about each Shwapno outlet/store.
+
+Main fields:
+- id: Unique outlet ID.
+- name: Outlet name, for example "Shwapno Dhanmondi 27".
+- code: Short outlet code, for example "DHM27".
+- region: City or region, for example Dhaka or Chattogram.
+- manager_name: Name of the outlet manager.
+
+Used for:
+Almost every other table links to this table using outlet_id. It tells the app
+which store the sales, stock, tasks, alerts, and reports belong to.
+
+
+2. product_categories
+---------------------
+What it stores:
+The single master list of product categories used by SKU-based tables.
+
+Main fields:
+- id: Primary key referenced as category_id by product-related tables.
+- name: Display name, such as Fish, Frozen, Pet Food, Meat, or Dairy.
+- slug: Unique machine-friendly name.
+- description: Short explanation of the category.
+- is_active: Whether the category can currently be used.
+- created_at: When the category was created.
+
+Used for:
+Keeping product categories consistent across sales, inventory, movements,
+stock-outs, promotions, deliveries, and demand forecasts.
+
+
+3. sales_records
+----------------
+What it stores:
+Daily sales data by SKU and category.
+
+Main fields:
+- id: Unique sales record ID.
+- outlet_id: Which outlet this sales record belongs to.
+- sku: Product SKU/code.
+- category_id: Foreign key to product_categories.id.
+- category: Legacy display value retained for backward-compatible API output.
+- date: Sales date.
+- units_sold: Number of units sold.
+- revenue: Total sales amount.
+- footfall: Customer traffic count.
+- is_festival_period: Whether the sale happened during a festival/seasonal period.
+
+Used for:
+Sales trend charts, revenue today, customer footfall analysis, and seasonal
+demand understanding.
+
+
+4. inventory_items
+------------------
+What it stores:
+Current stock position for each SKU in each outlet.
+
+Main fields:
+- id: Unique inventory row ID.
+- outlet_id: Which outlet owns this stock.
+- sku: Product SKU/code.
+- category_id: Foreign key to product_categories.id.
+- category: Legacy display value retained for backward-compatible API output.
+- on_hand_units: Current available stock.
+- reorder_point: Stock level where reorder should happen.
+- avg_daily_sales: Average number of units sold per day.
+- next_delivery_date: Expected next delivery date.
+- last_stock_out_date: Last date this SKU went out of stock.
+- updated_at: Last update time.
+
+Used for:
+Stock-out risk table, inventory health, task prioritization, and alert scanning.
+The backend calculates days of cover from on_hand_units / avg_daily_sales.
+
+
+5. inventory_movements
+----------------------
+What it stores:
+Stock movement history for each SKU, like a stock ledger.
+
+Main fields:
+- id: Unique movement ID.
+- outlet_id: Which outlet this movement happened in.
+- sku: Product SKU/code.
+- category_id: Foreign key to product_categories.id.
+- category: Legacy display value retained for backward-compatible API output.
+- movement_type: Type of movement: receipt, sale, adjustment, transfer_in,
+  transfer_out, or wastage.
+- quantity: Number of units moved. Positive means stock came in, negative means
+  stock went out.
+- reference: Reference number or document ID.
+- occurred_at: Date and time of the movement.
+- note: Extra explanation.
+
+Used for:
+Inventory Movement Ledger section and stock history investigation.
+
+
+6. stock_out_events
+-------------------
+What it stores:
+History of products that went out of stock.
+
+Main fields:
+- id: Unique stock-out event ID.
+- outlet_id: Which outlet had the stock-out.
+- sku: Product SKU/code.
+- category_id: Foreign key to product_categories.id.
+- category: Legacy display value retained for backward-compatible API output.
+- started_at: When the stock-out started.
+- resolved_at: When it was fixed. Empty means still open.
+- estimated_lost_sales: Estimated sales lost because the product was unavailable.
+- root_cause: Reason for stock-out, such as delayed delivery or unexpected demand.
+
+Used for:
+Stock-Out History section, root-cause analysis, and AI task prioritization.
+
+
+6. manpower_roster
+------------------
+What it stores:
+Daily staff roster and attendance by shift.
+
+Main fields:
+- id: Unique roster row ID.
+- outlet_id: Which outlet the roster belongs to.
+- date: Roster date.
+- shift: Shift name, such as morning, peak, evening, closing.
+- required_staff: Number of staff required.
+- present_staff: Number of staff actually present.
+- peak_hour_footfall_forecast: Expected customer traffic during peak hours.
+
+Used for:
+Shift-wise manpower view, low manpower alerts, and AI queue prioritization.
+
+
+7. complaints
+-------------
+What it stores:
+Customer complaints and feedback records.
+
+Main fields:
+- id: Unique complaint ID.
+- outlet_id: Which outlet received the complaint.
+- category: Complaint category, such as Product Quality, Billing, Service.
+- description: Complaint details.
+- severity: Complaint severity from 1 to 5.
+- status: open, in_progress, or resolved.
+- created_at: When the complaint was created.
+
+Used for:
+Customer Issue Desk, complaint spike alerts, task creation, and Gemini context.
+
+
+8. promotion_campaigns
+----------------------
+What it stores:
+Promotion and campaign calendar records.
+
+Main fields:
+- id: Unique campaign ID.
+- outlet_id: Which outlet the campaign applies to.
+- name: Campaign name.
+- category: Product category for the campaign.
+- sku: Specific SKU if the campaign is SKU-based.
+- start_date: Campaign start date.
+- end_date: Campaign end date.
+- discount_pct: Discount percentage.
+- expected_uplift_pct: Expected sales increase percentage.
+- status: planned, active, or completed.
+- owner: Team or person responsible for the campaign.
+
+Used for:
+Promotion & Campaign Calendar section and AI prioritization during campaign
+periods.
+
+
+9. delivery_schedules
+---------------------
+What it stores:
+Upcoming and recent delivery schedules from suppliers or distribution centers.
+
+Main fields:
+- id: Unique delivery ID.
+- outlet_id: Which outlet will receive the delivery.
+- supplier: Supplier or distribution center name.
+- sku: Product SKU/code.
+- category: Product category.
+- quantity: Quantity expected.
+- scheduled_date: Delivery date.
+- eta_window: Expected delivery time window.
+- status: scheduled, in_transit, received, or delayed.
+- grn_reference: Goods received note reference, if received.
+- note: Extra delivery note.
+
+Used for:
+Delivery Schedule section, stock planning, delayed delivery signals, and Gemini
+task prioritization.
+
+
+10. seasonal_events
+-------------------
+What it stores:
+Seasonal/festival event calendar, such as Eid, Puja, Pahela Boishakh, etc.
+
+Main fields:
+- id: Unique seasonal event ID.
+- outlet_id: Which outlet the seasonal event applies to.
+- name: Festival or seasonal event name.
+- start_date: Event start date.
+- end_date: Event end date.
+- category_focus: Categories expected to be affected.
+- uplift_pct: Expected sales uplift percentage.
+- notes: Business planning note.
+
+Used for:
+Seasonal Sales Trends section, next festival calculation, calendar context for
+AI, and festival-aware task prioritization.
+
+
+11. store_audit_reports
+-----------------------
+What it stores:
+Store audit results for compliance and operations checks.
+
+Main fields:
+- id: Unique audit report ID.
+- outlet_id: Which outlet was audited.
+- audit_date: Date of audit.
+- auditor_name: Name of auditor.
+- score_pct: Overall audit score percentage.
+- hygiene_score: Hygiene score.
+- planogram_score: Shelf/display compliance score.
+- cash_process_score: Cash process score.
+- findings: What the auditor found.
+- corrective_action: What action should be taken.
+
+Used for:
+Store Audit Reports section and AI prioritization when audit issues need action.
+
+
+12. manual_issues
+-----------------
+What it stores:
+Issues manually reported by Outlet Managers.
+
+Main fields:
+- id: Unique manual issue ID.
+- outlet_id: Which outlet reported the issue.
+- title: Short issue title.
+- description: Full issue details.
+- category: Issue category, such as IT/POS or Maintenance.
+- severity: Issue severity from 1 to 5.
+- status: open, assigned, or resolved.
+- reported_by: Person who reported the issue.
+- created_at: When it was reported.
+- resolved_at: When it was resolved, if resolved.
+
+Used for:
+Manual Manager Issues section, manager issue tracking, and Gemini task
+prioritization.
+
+
+13. tasks
+---------
+What it stores:
+Action items for outlet managers.
+
+Main fields:
+- id: Unique task ID.
+- outlet_id: Which outlet the task belongs to.
+- title: Task title.
+- description: Task details.
+- source: Where the task came from: stock, manpower, complaint, promotion, audit,
+  manual.
+- priority_score: Priority score from 0 to 100. Higher means more urgent.
+- status: pending, in_progress, done, or dismissed.
+- created_at: When the task was created.
+- due_at: Optional deadline.
+
+Used for:
+AI-Prioritized Task Queue. Gemini ranks these tasks using operational context,
+and the backend saves the new priority_score.
+
+
+14. alerts
+----------
+What it stores:
+Operational alerts generated by seed data or the alert engine.
+
+Main fields:
+- id: Unique alert ID.
+- outlet_id: Which outlet the alert belongs to.
+- type: Alert type, such as stock_out_risk, low_manpower, operational_delay,
+  complaint_spike, festival_demand.
+- severity: info, warning, or critical.
+- message: Alert message.
+- created_at: When the alert was created.
+- acknowledged: Whether someone acknowledged the alert.
+
+Used for:
+Active Alerts, Live Ops Receipt, scorecard critical alert count, and Gemini
+task prioritization.
+
+
+15. demand_forecasts
+--------------------
+What it stores:
+Forecasted demand for each SKU and date.
+
+Main fields:
+- outlet_id: Which outlet the forecast belongs to.
+- sku/category: Which product is being forecast.
+- forecast_date: The date being predicted.
+- predicted_units: Expected customer demand for that date.
+- baseline_units: Normal demand before uplift factors.
+- weather_uplift_pct: Demand increase expected from weather.
+- promotion_uplift_pct: Demand increase expected from campaigns.
+- seasonal_uplift_pct: Demand increase expected from festivals/seasons.
+- trend_uplift_pct: Recent sales trend adjustment.
+- recommended_stock_units: Stock buffer the outlet should hold.
+- current_on_hand_units: Current inventory at forecast time.
+- inbound_units: Incoming delivery quantity.
+- projected_gap_units: Shortage risk after stock and inbound delivery.
+- risk_level: low, medium, high, or critical.
+- confidence_pct: Forecast confidence score.
+- drivers: Simple explanation of data used by the model.
+
+Used for:
+Production Demand Forecast, weather demand planning, and stock-more decisions.
+
+
+16. ai_recommendation_audits
+----------------------------
+What it stores:
+Every AI recommendation generated by the system, including approval and
+escalation history.
+
+Main fields:
+- outlet_id: Which outlet the recommendation belongs to.
+- purpose: Why the recommendation was generated, such as weather_demand.
+- generated_by/model: Whether Gemini or local rules generated the summary.
+- summary: AI recommendation summary shown to the manager.
+- actions: Action items generated by AI/rules.
+- context_snapshot: The business data sent into the AI workflow.
+- status: pending_approval, approved, rejected, escalated, or implemented.
+- reviewed_by/review_note/reviewed_at: Manager approval or rejection details.
+- escalated_to/escalation_reason/escalated_at: Supervisor escalation details.
+
+Used for:
+Approval workflow, escalation workflow, historical audit trail, and management
+review of AI decisions.
+
+
+17. outlet_sales_targets
+------------------------
+What it stores:
+Monthly sales targets for each outlet, automatically divided into weekly and
+daily targets.
+
+Main fields:
+- outlet_id: Which outlet the target belongs to.
+- year/month: Which month the target is for.
+- monthly_target: The main sales target entered by management.
+- weekly_target: Monthly target divided by the number of calendar weeks in the month.
+- daily_target: Monthly target divided by the number of days in the month.
+- weeks_in_month: Number of calendar weeks touched by that month.
+- days_in_month: Number of days in that month.
+- created_at/updated_at: When the target was created or changed.
+
+Used for:
+Sales Target Tracker, monthly/weekly/daily sales progress, and outlet manager
+performance monitoring.
+
+
+How the tables connect
+----------------------
+Most tables have outlet_id. That means each record belongs to one outlet from
+the outlets table.
+
+Example:
+- outlets.id = 1
+- inventory_items.outlet_id = 1
+- tasks.outlet_id = 1
+- alerts.outlet_id = 1
+
+So when the dashboard selects outlet 1, the backend fetches only the records
+for that outlet.
+
+
+What Gemini uses
+----------------
+Gemini does not own the database tables.
+
+Gemini reads selected data from these tables as context when:
+- Ranking the AI-Prioritized Task Queue.
+- Answering chatbot questions.
+- Generating AI action summaries.
+
+The database stores the source data. Gemini gives judgment, ranking, and
+explanation based on that data.
+
+
+Important app sections and their source tables
+----------------------------------------------
+Productivity Score:
+- Uses sales_records, inventory_items, manpower_roster, complaints, alerts.
+
+Sales & Footfall:
+- Uses sales_records.
+
+Stock-Out Risk by SKU:
+- Uses inventory_items.
+
+Shift-wise Manpower:
+- Uses manpower_roster.
+
+Customer Issue Desk:
+- Uses complaints.
+
+Active Alerts:
+- Uses alerts.
+
+Inventory Movement Ledger:
+- Uses inventory_movements.
+
+Stock-Out History:
+- Uses stock_out_events.
+
+Promotion & Campaign Calendar:
+- Uses promotion_campaigns.
+
+Delivery Schedule:
+- Uses delivery_schedules.
+
+Seasonal Sales Trends:
+- Uses seasonal_events.
+
+Store Audit Reports:
+- Uses store_audit_reports.
+
+Manual Manager Issues:
+- Uses manual_issues.
+
+AI-Prioritized Task Queue:
+- Stores tasks in tasks.
+- Uses Gemini plus data from inventory, manpower, complaints, alerts,
+  deliveries, audits, manual issues, and seasonal events to rank the tasks.
+
+Production Demand Forecast:
+- Stores output in demand_forecasts.
+- Uses sales_records, inventory_items, delivery_schedules, promotion_campaigns,
+  seasonal_events, and weather API data.
+
+AI Approval & Audit Trail:
+- Stores output in ai_recommendation_audits.
+- Tracks each AI recommendation from pending approval to approved, rejected, or
+  escalated.
+
+Sales Target Tracker:
+- Stores monthly targets in outlet_sales_targets.
+- Automatically splits monthly target into weekly and daily targets.
+- Compares targets with actual sales from sales_records.
