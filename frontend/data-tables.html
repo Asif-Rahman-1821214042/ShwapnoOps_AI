@@ -39,7 +39,7 @@
   </section>
 </main>
 <script>
-const API = `${window.location.protocol}//${window.location.hostname}:8000`;
+const API = '';
 let outletId;
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 const shortDate = value => value ? new Date(value + (String(value).includes('T') ? '' : 'T00:00:00')).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}) : '—';

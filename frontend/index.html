@@ -942,7 +942,7 @@
 
 <script>
 const apiInput = document.getElementById('apiBase');
-apiInput.value = `${window.location.protocol}//${window.location.hostname}:8000`;
+apiInput.value = '';
 let API = apiInput.value;
 let currentOutlet = null;
 let ws = null;
@@ -1487,7 +1487,10 @@ async function loadOperationalData(){
 
 function connectWS(){
   if(ws) ws.close();
-  const wsUrl = API.replace('http', 'ws') + `/ws/outlet/${currentOutlet}`;
+  const wsBase = API
+    ? API.replace(/^http/, 'ws')
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
+  const wsUrl = wsBase + `/ws/outlet/${currentOutlet}`;
   try{
     ws = new WebSocket(wsUrl);
     ws.onopen = () => document.getElementById('wsStatus').textContent = 'Live';
