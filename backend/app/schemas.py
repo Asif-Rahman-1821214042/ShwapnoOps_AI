@@ -377,7 +377,7 @@ class AiRecommendationEscalateIn(BaseModel):
 
 
 class DemandForecastOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
     id: int
     outlet_id: int
     sku: str
@@ -403,6 +403,8 @@ class DemandForecastOut(BaseModel):
 
 
 class ForecastRunResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     outlet_id: int
     horizon_days: int
     model_name: str

@@ -33,6 +33,7 @@ backend/app/.env
 # *.sqlite3
 # *.log
 # *.pid
+!backend/data/shwapno_ops.db
 
 # Build / packaging output
 build/
