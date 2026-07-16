@@ -118,6 +118,10 @@ docker compose up --build
 This brings up the API, Redis (ready for the Celery scale-out path), and the static
 frontend via nginx.
 
+The Docker API container stores the SQLite database at `/app/data/shwapno_ops.db`,
+mounted from `./backend/data/shwapno_ops.db` on your machine, so local database
+state persists across container rebuilds.
+
 Dashboard pages:
 - Manager dashboard: `http://localhost:3000/`
 - Analytics graphs: `http://localhost:3000/analytics.html`
