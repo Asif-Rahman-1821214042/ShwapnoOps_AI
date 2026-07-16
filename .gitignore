@@ -26,13 +26,13 @@ backend/app/.env
 !backend/app/.env.example
 
 # Local databases and runtime files
-*.db
-*.db-shm
-*.db-wal
-*.sqlite
-*.sqlite3
-*.log
-*.pid
+# *.db
+# *.db-shm
+# *.db-wal
+# *.sqlite
+# *.sqlite3
+# *.log
+# *.pid
 
 # Build / packaging output
 build/
