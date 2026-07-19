@@ -84,6 +84,19 @@ class PosPaymentMethod(str, enum.Enum):
     MFS = "mfs"
 
 
+class TransactionCategory(str, enum.Enum):
+    NORMAL_TRANSACTION = "normal_transaction"
+    POS_TRANSACTION = "pos_transaction"
+    E_PAYMENT = "e_payment"
+
+
+TRANSACTION_CATEGORY_ENUM = Enum(
+    TransactionCategory,
+    values_callable=lambda categories: [category.value for category in categories],
+    name="transactioncategory",
+)
+
+
 class PosTerminal(Base):
     __tablename__ = "pos_terminals"
     __table_args__ = (UniqueConstraint("outlet_id", "code", name="uq_pos_terminal_outlet_code"),)
@@ -117,6 +130,9 @@ class PaymentMethod(Base):
     name: Mapped[str] = mapped_column(String(60), unique=True)
     is_mobile_financial_service: Mapped[bool] = mapped_column(Boolean, default=False)
     is_digital: Mapped[bool] = mapped_column(Boolean, default=False)
+    transaction_category: Mapped[TransactionCategory] = mapped_column(
+        TRANSACTION_CATEGORY_ENUM, default=TransactionCategory.NORMAL_TRANSACTION, index=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     payments: Mapped[list["PosPayment"]] = relationship(back_populates="payment_method")
@@ -169,6 +185,9 @@ class PosPayment(Base):
     transaction_reference: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True, index=True)
     amount: Mapped[float] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(20), default="paid", index=True)
+    transaction_category: Mapped[TransactionCategory] = mapped_column(
+        TRANSACTION_CATEGORY_ENUM, default=TransactionCategory.NORMAL_TRANSACTION, index=True
+    )
     paid_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
 
     order: Mapped["PosTransaction"] = relationship(back_populates="payments")

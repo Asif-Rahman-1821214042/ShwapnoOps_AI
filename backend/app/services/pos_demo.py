@@ -9,6 +9,7 @@ from app.models import (
     Customer, Employee, Outlet, PaymentMethod, PosPayment, PosPaymentMethod,
     PosTerminal, PosTransaction, PosTransactionLine, ProductCategory,
 )
+from app.services.payment_classification import classify_payment_method
 
 
 POS_PRODUCTS = [
@@ -34,12 +35,12 @@ async def ensure_pos_demo_data(db: AsyncSession) -> int:
     ):
         method = (await db.execute(select(PaymentMethod).where(PaymentMethod.code == code))).scalar_one_or_none()
         if method is None:
-            method = PaymentMethod(code=code, name=name, is_mobile_financial_service=is_mfs, is_digital=is_digital)
+            method = PaymentMethod(code=code, name=name, is_mobile_financial_service=is_mfs, is_digital=is_digital, transaction_category=classify_payment_method(code))
             db.add(method)
             await db.flush()
         methods[code] = method
-        if method.is_digital != is_digital:
-            method.is_digital = is_digital
+        method.transaction_category = classify_payment_method(code)
+        method.is_digital = method.transaction_category.value == "e_payment"
 
     terminals = {}
     for outlet in outlets:
@@ -152,6 +153,7 @@ async def ensure_pos_demo_data(db: AsyncSession) -> int:
                 transaction_reference=reference,
                 amount=order.paid_amount,
                 status=order.payment_status,
+                transaction_category=classify_payment_method(method.code, order.terminal_id is not None),
                 paid_at=order.transaction_at,
             ))
 

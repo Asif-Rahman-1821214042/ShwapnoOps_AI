@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Employee, EmployeeAttendance, ManpowerRoster
+from app.models import AttendanceStatus, Employee, EmployeeAttendance, ManpowerRoster
 from app.schemas import EmployeeAttendanceOut, EmployeeAttendanceSummaryOut, EmployeeOut, ManpowerOut
 from app.services.attendance import attendance_summary, predict_peak_context
 
@@ -117,6 +117,36 @@ async def optimize_shifts(outlet_id: int, db: AsyncSession = Depends(get_db)):
         "footfall_per_available_staff": footfall_per_available_staff,
         "capacity_per_staff": staff_capacity_per_peak_window,
     }
+    available_rows = (await db.execute(
+        select(Employee, EmployeeAttendance).join(EmployeeAttendance).where(
+            Employee.outlet_id == outlet_id,
+            Employee.is_active.is_(True),
+            EmployeeAttendance.attendance_date == today,
+            EmployeeAttendance.status.in_([AttendanceStatus.PRESENT, AttendanceStatus.LATE]),
+        ).order_by(EmployeeAttendance.status, Employee.designation, Employee.name)
+    )).all()
+    job_area_by_role = {
+        "Cashier": ("Checkout & billing", "Keep the fastest available cashier on an open lane."),
+        "Fresh Food Associate": ("Fresh foods counter", "Cover weighing, packing, and replenishment during the peak."),
+        "Inventory Associate": ("Replenishment runner", "Refill high-velocity shelves and support fresh-food stock-outs."),
+        "Floor Associate": ("Aisle & queue support", "Guide customers, recover shelves, and direct queues to open checkouts."),
+        "Customer Service": ("Customer service desk", "Handle returns, questions, and queue escalation."),
+        "Security": ("Entrance flow & trolley bay", "Manage entry flow and return baskets/trolleys to the floor."),
+        "Cleaner": ("Quick clean & basket return", "Keep high-traffic areas clear and return baskets to checkouts."),
+        "Outlet Supervisor": ("Peak-floor coordination", "Monitor queues and reassign support where waiting time increases."),
+    }
+    assignments = []
+    for employee, record in available_rows:
+        area, reason = job_area_by_role.get(employee.designation, ("Customer-facing support", "Provide flexible support where the floor lead identifies the longest queue."))
+        assignments.append({
+            "employee_id": employee.id,
+            "employee_name": employee.name,
+            "employee_code": employee.employee_code,
+            "designation": employee.designation,
+            "attendance_status": record.status.value if hasattr(record.status, "value") else str(record.status),
+            "job_area": area,
+            "reason": reason,
+        })
     if staff_gap:
         recommendation = (
             f"Predicted peak is {peak_window}. Arrange {staff_gap} additional available or cross-trained employee(s) "
@@ -135,5 +165,6 @@ async def optimize_shifts(outlet_id: int, db: AsyncSession = Depends(get_db)):
         },
         "attendance_summary": attendance,
         "staffing": staffing,
+        "assignments": assignments,
         "recommendation": recommendation,
     }

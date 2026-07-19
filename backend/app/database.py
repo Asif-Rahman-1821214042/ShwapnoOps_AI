@@ -257,5 +257,16 @@ async def init_db():
                 sync_conn.exec_driver_sql(
                     "ALTER TABLE payment_methods ADD COLUMN is_digital BOOLEAN NOT NULL DEFAULT 0"
                 )
+            if "transaction_category" not in columns:
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE payment_methods ADD COLUMN transaction_category VARCHAR(30) NOT NULL DEFAULT 'normal_transaction'"
+                )
+            payment_columns = {column["name"] for column in inspect(sync_conn).get_columns("pos_payments")}
+            if "transaction_category" not in payment_columns:
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE pos_payments ADD COLUMN transaction_category VARCHAR(30) NOT NULL DEFAULT 'normal_transaction'"
+                )
+            sync_conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_payment_methods_transaction_category ON payment_methods (transaction_category)")
+            sync_conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_pos_payments_transaction_category ON pos_payments (transaction_category)")
 
         await conn.run_sync(add_payment_method_flags)

@@ -165,6 +165,11 @@
   /* ---- Shifts ---- */
   .shift-row{display:flex; align-items:center; gap:12px; margin-bottom:12px;}
   .shift-name{width:70px; font-family:'IBM Plex Mono'; font-size:11px; text-transform:uppercase; color:var(--text-lo);}
+  #assignmentRows .shift-row{align-items:flex-start;padding:10px;border:1px solid #EAECF0;border-radius:8px;background:#FCFCFD;}
+  #assignmentRows .shift-name{width:auto;flex:1;min-width:0;text-transform:none;line-height:1.45;color:#475467;}
+  #assignmentRows .shift-name:first-child{max-width:42%;color:#101828;}
+  #assignmentRows .shift-name strong{font-size:11px;color:#101828;}
+  #assignmentRows .mono{font-size:9px;text-transform:none;color:#667085;}
   .shift-bar{flex:1; height:10px; background:rgba(255,255,255,0.08); border-radius:6px; overflow:hidden;}
   .shift-bar > div{height:100%; background:var(--mint);}
   .shift-bar.low > div{background:var(--chili);}
@@ -711,16 +716,16 @@
 
   <div class="overview">
     <div class="metric"><span>Outlet Readiness</span><strong id="metricReadiness">--</strong><small>Composite operating health</small></div>
-    <div class="metric"><span>POS Collection Today</span><strong id="metricRevenue">--</strong><small id="metricRevenueNote">Loading POS payments…</small></div>
+    <div class="metric"><span>Today's Total Sales</span><strong id="metricRevenue">--</strong><small id="metricRevenueNote">All payment methods</small></div>
     <div class="metric"><span>Stock Exceptions</span><strong id="metricStock">--</strong><small>Medium to critical risk</small></div>
-    <div class="metric"><span>POS & Operations Actions</span><strong id="metricIssues">--</strong><small id="metricIssuesNote">Payment follow-ups, complaints, and alerts</small></div>
+    <div class="metric"><span>Operations Actions</span><strong id="metricIssues">--</strong><small id="metricIssuesNote">Complaints and critical alerts</small></div>
   </div>
 
   <section class="panel pos-workspace" aria-labelledby="posWorkspaceTitle">
     <div class="pos-workspace-head">
       <div>
         <h3 id="posWorkspaceTitle">POS Operations</h3>
-        <p>Sales, payments, outlet filters, and digital order follow-up for the selected outlet.</p>
+        <p>Card payments processed through POS terminals for the selected outlet.</p>
       </div>
       <span class="status-pill status-info" id="posOutletScope">Outlet scoped</span>
     </div>
@@ -735,9 +740,9 @@
     <div class="pos-kpi-grid" id="posKpis"></div>
     <div class="pos-subhead"><span>Payment Method Summary</span><span id="posRange">--</span></div>
     <div class="pos-payment-grid" id="posPayments"></div>
-    <div class="pos-subhead"><span>Digital Payment Orders</span><a class="export-btn" id="posExport" href="#">Export CSV</a></div>
+    <div class="pos-subhead"><span>Card POS Transactions</span><a class="export-btn" id="posExport" href="#">Export CSV</a></div>
     <div class="pos-order-tools">
-      <select id="posMethod"><option value="">All digital methods</option></select>
+      <select id="posMethod"><option value="">Card payments only</option></select>
       <select id="posPaymentStatus"><option value="">All payment statuses</option><option value="paid">Paid</option><option value="partial">Partial</option><option value="unpaid">Unpaid</option><option value="refunded">Refunded</option></select>
       <select id="posOrderStatus"><option value="">All order statuses</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="refunded">Refunded</option></select>
       <input id="posSearch" placeholder="Invoice, phone, transaction ID">
@@ -903,6 +908,8 @@
       <div class="panel-title"><span>Peak Manpower Coverage</span><span id="peakMeta">Predicting peak</span></div>
       <div id="shiftRows"></div>
       <div class="rec-note" id="shiftRec" style="display:none;"></div>
+      <div class="panel-title" style="margin-top:16px;"><span>Recommended Peak Assignments</span><span id="assignmentMeta">Attendance-based</span></div>
+      <div id="assignmentRows"></div>
     </div>
 
   </div>
@@ -1128,15 +1135,15 @@ async function loadPosDashboardSignals(){
   const money = value => '৳ ' + fmtMoney(value || 0);
   const pending = summary.pending_unpaid || 0;
   const exceptions = (summary.cancelled_orders || 0) + (summary.refunded_orders || 0);
-  document.getElementById('metricRevenue').textContent = money(summary.total_paid);
-  document.getElementById('metricRevenueNote').textContent = `${pos.digital_cash.sales_pct}% digital · ${pos.payment_completion.paid_orders} paid POS order${pos.payment_completion.paid_orders === 1 ? '' : 's'}`;
+  document.getElementById('metricRevenue').textContent = money(pos.sales.amount);
+  document.getElementById('metricRevenueNote').textContent = `${pos.orders.completed} completed order${pos.orders.completed === 1 ? '' : 's'} across all payment methods`;
   const operationalIssues = scorecard.open_complaints + scorecard.critical_alerts;
-  document.getElementById('metricIssues').textContent = operationalIssues + pos.orders.pending + exceptions;
-  document.getElementById('metricIssuesNote').textContent = `${pos.orders.pending} payment follow-up · ${exceptions} cancelled/refunded · ${operationalIssues} ops issue${operationalIssues === 1 ? '' : 's'}`;
+  document.getElementById('metricIssues').textContent = operationalIssues;
+  document.getElementById('metricIssuesNote').textContent = `${operationalIssues} complaint${operationalIssues === 1 ? '' : 's'} or critical alert`;
 }
 
 function posParams(includeOrder = false){
-  const params = new URLSearchParams({period: document.getElementById('posPeriod').value, outlet_id: String(currentOutlet)});
+  const params = new URLSearchParams({period: document.getElementById('posPeriod').value, outlet_id: String(currentOutlet), transaction_category: 'pos_transaction'});
   [['start_date','posStartDate'],['end_date','posEndDate'],['terminal_id','posTerminal'],['cashier_employee_id','posCashier']].forEach(([key, id]) => {
     const value = document.getElementById(id).value;
     if(value) params.set(key, value);
@@ -1156,7 +1163,7 @@ async function loadPosChoices(){
   document.getElementById('posOutletScope').textContent = document.getElementById('outletSelect').selectedOptions[0]?.textContent || 'Outlet scoped';
   document.getElementById('posTerminal').innerHTML = '<option value="">All terminals</option>' + terminals.map(row => `<option value="${row.id}">${escapeHtml(row.name)}</option>`).join('');
   document.getElementById('posCashier').innerHTML = '<option value="">All cashiers</option>' + cashiers.map(row => `<option value="${row.id}">${escapeHtml(row.name)}</option>`).join('');
-  document.getElementById('posMethod').innerHTML = '<option value="">All digital methods</option>' + methods.filter(row => row.is_digital).map(row => `<option value="${row.id}">${escapeHtml(row.name)}</option>`).join('');
+  document.getElementById('posMethod').innerHTML = methods.filter(row => row.transaction_category === 'pos_transaction').map(row => `<option value="${row.id}">${escapeHtml(row.name)}</option>`).join('') || '<option value="">No card method configured</option>';
   posChoicesOutlet = currentOutlet;
 }
 
@@ -1167,14 +1174,14 @@ async function loadPosWorkspace(){
   const money = value => `৳ ${fmtMoney(value || 0)}`;
   document.getElementById('posRange').textContent = `${summary.range.start} to ${summary.range.end}`;
   document.getElementById('posKpis').innerHTML = [
-    ['Sales & target', money(kpis.sales.amount), `${kpis.sales.achievement_pct ?? 0}% of ${money(kpis.sales.target)}`],
-    ['Digital collection', money(kpis.digital_cash.amount), `${kpis.digital_cash.sales_pct}% of completed sales`],
-    ['Completed orders', kpis.orders.completed, `${kpis.orders.pending} pending · ${kpis.orders.cancelled} cancelled`],
+    ['Card POS sales', money(kpis.sales.amount), `${kpis.orders.completed} completed card POS orders`],
+    ['Card collection', money(kpis.digital_cash.amount), `${kpis.digital_cash.sales_pct}% of card POS sales`],
+    ['Card POS orders', kpis.orders.completed, `${kpis.orders.pending} pending · ${kpis.orders.cancelled} cancelled`],
     ['Average basket', money(kpis.basket.average_value), `${kpis.basket.average_items} items per order`],
     ['Payment completion', `${kpis.payment_completion.rate}%`, `${kpis.payment_completion.paid_orders} paid · ${kpis.payment_completion.pending_or_failed} pending`],
     ['Stock availability', `${kpis.availability.pct}%`, `${kpis.availability.low_stock} low-stock SKU warnings`],
     ['Employee attendance', `${kpis.attendance.present}/${kpis.attendance.scheduled}`, `${kpis.attendance.absent} absent · ${kpis.attendance.leave} on leave`],
-    ['POS productivity', `${kpis.productivity.score}%`, 'Sales, payments, staff, and stock']
+    ['POS productivity', `${kpis.productivity.score}%`, 'Card POS sales, staff, and stock']
   ].map(row => `<div class="pos-kpi"><span>${row[0]}</span><strong>${row[1]}</strong><small>${row[2]}</small></div>`).join('');
   document.getElementById('posPayments').innerHTML = summary.payment_methods.map(row => `<div class="pos-payment"><b>${escapeHtml(row.name)}</b><strong>${money(row.received_amount)}</strong><small>${row.orders} orders · ${row.sales_pct}% of sales</small></div>`).join('');
   await loadPosOrders();
@@ -1427,6 +1434,14 @@ async function loadShifts(){
   } else {
     recEl.style.display = 'none';
   }
+  const assignments = data.assignments || [];
+  document.getElementById('assignmentMeta').textContent = `${assignments.length} available today`;
+  document.getElementById('assignmentRows').innerHTML = assignments.map(item => `
+    <div class="shift-row">
+      <div class="shift-name"><strong>${escapeHtml(item.employee_name)}</strong><br><span class="mono">${escapeHtml(item.designation)} · ${escapeHtml(item.attendance_status)}</span></div>
+      <div class="shift-name"><strong>${escapeHtml(item.job_area)}</strong><br><span class="mono">${escapeHtml(item.reason)}</span></div>
+    </div>
+  `).join('') || '<div class="empty-note">No present or late employees are available for a peak assignment today.</div>';
 }
 
 async function loadEmployees(){

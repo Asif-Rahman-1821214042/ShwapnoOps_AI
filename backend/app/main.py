@@ -9,6 +9,7 @@ from app.workers.background_tasks import start_scheduler, stop_scheduler
 from app.routers import categories, outlets, sales, pos, inventory, manpower, complaints, tasks, alerts, chatbot, dashboard, ws, ai_actions, operations, forecasts, targets
 from app.services.product_taxonomy import ensure_product_categories
 from app.services.pos_demo import ensure_pos_demo_data
+from app.services.payment_classification import migrate_payment_classifications
 
 logging.basicConfig(level=logging.INFO)
 
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await ensure_product_categories(db)
         await ensure_pos_demo_data(db)
+        await migrate_payment_classifications(db)
     start_scheduler()
     yield
     stop_scheduler()

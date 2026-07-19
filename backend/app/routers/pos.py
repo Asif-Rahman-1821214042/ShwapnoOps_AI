@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import (
     AttendanceStatus, Customer, Employee, EmployeeAttendance, InventoryItem,
-    Outlet, OutletSalesTarget, PaymentMethod, PosPayment, PosTerminal, PosTransaction,
+    Outlet, OutletSalesTarget, PaymentMethod, PosPayment, PosTerminal, PosTransaction, TransactionCategory,
 )
 
 router = APIRouter(prefix="/api/pos", tags=["pos"])
@@ -48,6 +48,12 @@ def _filters(outlet_id, terminal_id, cashier_employee_id, start, end):
     return filters
 
 
+def _transaction_category_filter(category: TransactionCategory):
+    return PosTransaction.id.in_(
+        select(PosPayment.transaction_id).where(PosPayment.transaction_category == category)
+    )
+
+
 async def _require_outlet(db: AsyncSession, outlet_id: int) -> None:
     exists = await db.scalar(select(Outlet.id).where(Outlet.id == outlet_id))
     if not exists:
@@ -68,7 +74,7 @@ def _order_payload(order: PosTransaction) -> dict:
         "payment_status": order.payment_status, "order_status": order.order_status,
         "payments": [{
             "id": payment.id, "method_id": payment.payment_method_id,
-            "payment_method": payment.payment_method.name, "transaction_id": payment.transaction_reference,
+            "payment_method": payment.payment_method.name, "transaction_category": payment.transaction_category.value if hasattr(payment.transaction_category, "value") else payment.transaction_category, "transaction_id": payment.transaction_reference,
             "amount": payment.amount, "status": payment.status, "paid_at": payment.paid_at,
         } for payment in order.payments],
         "lines": [{
@@ -81,7 +87,7 @@ def _order_payload(order: PosTransaction) -> dict:
 
 @router.get("/payment-methods")
 async def payment_methods(db: AsyncSession = Depends(get_db)):
-    return [{"id": row.id, "code": row.code, "name": row.name, "is_mobile_financial_service": row.is_mobile_financial_service, "is_digital": row.is_digital}
+    return [{"id": row.id, "code": row.code, "name": row.name, "is_mobile_financial_service": row.is_mobile_financial_service, "transaction_category": row.transaction_category.value if hasattr(row.transaction_category, "value") else row.transaction_category}
             for row in (await db.execute(select(PaymentMethod).where(PaymentMethod.is_active.is_(True)).order_by(PaymentMethod.id))).scalars()]
 
 
@@ -89,11 +95,14 @@ async def payment_methods(db: AsyncSession = Depends(get_db)):
 async def pos_kpis(
     period: str = "today", start_date: dt.date | None = None, end_date: dt.date | None = None,
     outlet_id: int = Query(..., gt=0), terminal_id: int | None = None, cashier_employee_id: int | None = None,
+    transaction_category: TransactionCategory | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     await _require_outlet(db, outlet_id)
     start, end = _range(period, start_date, end_date)
     filters = _filters(outlet_id, terminal_id, cashier_employee_id, start, end)
+    if transaction_category:
+        filters.append(_transaction_category_filter(transaction_category))
     order_row = (await db.execute(select(
         func.coalesce(func.sum(case((PosTransaction.order_status == "completed", PosTransaction.total_amount), else_=0.0)), 0.0),
         func.coalesce(func.count(case((PosTransaction.order_status == "completed", PosTransaction.id))), 0),
@@ -116,7 +125,7 @@ async def pos_kpis(
     digital_rows = (await db.execute(
         select(PaymentMethod.id, PaymentMethod.name, func.coalesce(func.sum(PosPayment.amount), 0.0))
         .select_from(PaymentMethod).join(PosPayment).join(PosTransaction)
-        .where(PaymentMethod.is_digital.is_(True), PosPayment.status.in_(["paid", "partial"]), PosTransaction.order_status == "completed", *filters)
+        .where(PosPayment.transaction_category == (transaction_category or TransactionCategory.E_PAYMENT), PosPayment.status.in_(["paid", "partial"]), PosTransaction.order_status == "completed", *filters)
         .group_by(PaymentMethod.id).order_by(PaymentMethod.id)
     )).all()
     digital_total = sum(float(row[2]) for row in digital_rows)
@@ -192,6 +201,7 @@ async def list_transactions(
         "id": row.id, "outlet_id": row.outlet_id, "receipt_no": row.receipt_no,
         "transaction_at": row.transaction_at, "cashier_name": row.cashier_name,
         "payment_method": row.payments[0].payment_method.name if row.payments else "Unpaid",
+        "transaction_category": (row.payments[0].transaction_category.value if row.payments and hasattr(row.payments[0].transaction_category, "value") else (row.payments[0].transaction_category if row.payments else None)),
         "total_amount": row.total_amount, "item_count": row.item_count,
         "status": row.order_status,
     } for row in rows]
@@ -201,11 +211,14 @@ async def list_transactions(
 async def pos_summary(
     period: str = "today", start_date: dt.date | None = None, end_date: dt.date | None = None,
     outlet_id: int = Query(..., gt=0), terminal_id: int | None = None, cashier_employee_id: int | None = None,
+    transaction_category: TransactionCategory | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     await _require_outlet(db, outlet_id)
     start, end = _range(period, start_date, end_date)
     filters = _filters(outlet_id, terminal_id, cashier_employee_id, start, end)
+    if transaction_category:
+        filters.append(_transaction_category_filter(transaction_category))
     row = (await db.execute(select(
         func.count(PosTransaction.id),
         func.coalesce(func.sum(case((PosTransaction.order_status == "completed", PosTransaction.total_amount), else_=0.0)), 0.0),
@@ -231,7 +244,7 @@ async def pos_summary(
         "orders": row[0], "total_sales": round(total_sales, 2), "total_paid": round(float(row[2]), 2),
         "pending_unpaid": round(float(row[3]), 2), "cancelled_orders": row[4], "refunded_orders": row[5],
         "average_order_value": round(float(row[8]), 2), "total_discount": round(float(row[6]), 2), "total_tax": round(float(row[7]), 2),
-        "payment_methods": [{"id": method.id, "name": method.name, "orders": payment_totals.get(method.id, (0, 0.0))[0], "received_amount": round(float(payment_totals.get(method.id, (0, 0.0))[1]), 2),
+        "payment_methods": [{"id": method.id, "name": method.name, "transaction_category": method.transaction_category.value if hasattr(method.transaction_category, "value") else method.transaction_category, "orders": payment_totals.get(method.id, (0, 0.0))[0], "received_amount": round(float(payment_totals.get(method.id, (0, 0.0))[1]), 2),
                              "sales_pct": round(100 * float(amount) / total_sales, 1) if total_sales else 0}
                             for method in methods for amount in [payment_totals.get(method.id, (0, 0.0))[1]]],
     }
@@ -242,12 +255,13 @@ async def mobile_orders(
     period: str = "today", start_date: dt.date | None = None, end_date: dt.date | None = None,
     outlet_id: int = Query(..., gt=0), terminal_id: int | None = None, cashier_employee_id: int | None = None,
     payment_method_id: int | None = None, payment_status: str | None = None, order_status: str | None = None,
+    transaction_category: TransactionCategory = TransactionCategory.E_PAYMENT,
     search: str | None = None, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
     sort_by: str = "transaction_at", sort_dir: str = "desc", db: AsyncSession = Depends(get_db),
 ):
     await _require_outlet(db, outlet_id)
     start, end = _range(period, start_date, end_date)
-    filters = _filters(outlet_id, terminal_id, cashier_employee_id, start, end) + [PaymentMethod.is_digital.is_(True)]
+    filters = _filters(outlet_id, terminal_id, cashier_employee_id, start, end) + [PosPayment.transaction_category == transaction_category]
     if payment_method_id:
         filters.append(PosPayment.payment_method_id == payment_method_id)
     if payment_status:
@@ -286,11 +300,12 @@ async def export_mobile_orders(
     period: str = "today", start_date: dt.date | None = None, end_date: dt.date | None = None,
     outlet_id: int = Query(..., gt=0), terminal_id: int | None = None, cashier_employee_id: int | None = None,
     payment_method_id: int | None = None, payment_status: str | None = None, order_status: str | None = None,
+    transaction_category: TransactionCategory = TransactionCategory.E_PAYMENT,
     search: str | None = None, db: AsyncSession = Depends(get_db),
 ):
     await _require_outlet(db, outlet_id)
     start, end = _range(period, start_date, end_date)
-    filters = _filters(outlet_id, terminal_id, cashier_employee_id, start, end) + [PaymentMethod.is_digital.is_(True)]
+    filters = _filters(outlet_id, terminal_id, cashier_employee_id, start, end) + [PosPayment.transaction_category == transaction_category]
     if payment_method_id: filters.append(PosPayment.payment_method_id == payment_method_id)
     if payment_status: filters.append(PosTransaction.payment_status == payment_status)
     if order_status: filters.append(PosTransaction.order_status == order_status)
@@ -305,7 +320,7 @@ async def export_mobile_orders(
     writer = csv.writer(output)
     writer.writerow(["Invoice", "Date/time", "Customer", "Phone", "Outlet", "Cashier", "Payment method", "Transaction ID", "Order amount", "Discount", "Paid", "Payment status", "Order status"])
     for order in rows:
-        payment = next((row for row in order.payments if row.payment_method.is_digital), None)
+        payment = next((row for row in order.payments if row.transaction_category == TransactionCategory.E_PAYMENT), None)
         if payment:
             writer.writerow([order.receipt_no, order.transaction_at.isoformat(sep=" "), order.customer.name if order.customer else "Walk-in Customer", order.customer.phone if order.customer else "", order.outlet.name, order.cashier_employee.name if order.cashier_employee else order.cashier_name, payment.payment_method.name, payment.transaction_reference or "", order.total_amount, order.discount_amount, order.paid_amount, order.payment_status, order.order_status])
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=mobile-financial-service-orders.csv"})

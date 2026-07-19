@@ -73,7 +73,7 @@ const views = {
     ['Employee',r=>`${escapeHtml(r.employee_name)}<br><small>${escapeHtml(r.employee_code)}</small>`],['Designation',r=>r.designation],['In',r=>shortTime(r.check_in_at)],['Out',r=>shortTime(r.check_out_at)],['Hours',r=>r.working_hours],['Status',r=>pill(r.status)]
   ]},
   pos:{title:'POS Transactions',path:id=>`/api/pos/transactions?outlet_id=${id}&date=${selectedDate}&limit=200`,columns:[
-    ['Receipt',r=>r.receipt_no],['Time',r=>shortTime(r.transaction_at)],['Cashier',r=>r.cashier_name],['Payment',r=>pill(r.payment_method)],['Items',r=>r.item_count],['Discount',r=>money(r.discount_amount)],['Total',r=>money(r.total_amount)],['Status',r=>pill(r.status, r.status==='completed')]
+    ['Receipt',r=>r.receipt_no],['Time',r=>shortTime(r.transaction_at)],['Cashier',r=>r.cashier_name],['Payment',r=>pill(r.payment_method)],['Category',r=>pill((r.transaction_category||'').replaceAll('_',' '))],['Items',r=>r.item_count],['Discount',r=>money(r.discount_amount)],['Total',r=>money(r.total_amount)],['Status',r=>pill(r.status, r.status==='completed')]
   ]},
   movements:{title:'Inventory Movements',path:id=>`/api/operations/inventory-movements?outlet_id=${id}&limit=100`,columns:[
     ['Type',r=>pill(r.movement_type)],['SKU',r=>r.sku],['Category',r=>r.category],['Quantity',r=>r.quantity],['Reference',r=>r.reference],['Occurred',r=>shortDate(r.occurred_at)]
