@@ -4,6 +4,8 @@ from sqlalchemy import delete
 from app.database import AsyncSessionLocal, init_db
 from app.models import (
     Outlet, SalesRecord, InventoryItem, ManpowerRoster, Complaint, ComplaintStatus,
+    PosTransaction, PosTransactionLine,
+    Employee, EmployeeAttendance, AttendanceStatus,
     Task, TaskSource, TaskStatus, Alert, AlertSeverity, AlertType,
     InventoryMovement, InventoryMovementType, StockOutEvent,
     PromotionCampaign, CampaignStatus, DeliverySchedule, DeliveryStatus,
@@ -12,14 +14,15 @@ from app.models import (
 )
 from app.services.product_taxonomy import ensure_product_categories
 from app.services.sales_targets import target_splits
+from app.services.pos_demo import ensure_pos_demo_data
 
 random.seed(42)
 
 OUTLETS = [
-    ("Shwapno Dhanmondi 27", "DHM27", "Dhaka", "Rafiqul Islam"),
-    ("Shwapno Gulshan Avenue", "GLS01", "Dhaka", "Nusrat Jahan"),
-    ("Shwapno Uttara Sector 7", "UTR07", "Dhaka", "Kamal Hossain"),
-    ("Shwapno Chattogram GEC", "CTG02", "Chattogram", "Farhana Akter"),
+    ("Shwapno Dhanmondi 27", "DHM27", "Dhaka", "Rafiqul Islam", "House 27, Road 16, Dhanmondi, Dhaka", "+8801700001027", "dhm27@shwapno.example"),
+    ("Shwapno Gulshan Avenue", "GLS01", "Dhaka", "Nusrat Jahan", "Gulshan Avenue, Dhaka", "+8801700001001", "gls01@shwapno.example"),
+    ("Shwapno Uttara Sector 7", "UTR07", "Dhaka", "Kamal Hossain", "Sector 7, Uttara, Dhaka", "+8801700001007", "utr07@shwapno.example"),
+    ("Shwapno Chattogram GEC", "CTG02", "Chattogram", "Farhana Akter", "GEC Circle, Chattogram", "+8801700002002", "ctg02@shwapno.example"),
 ]
 
 SKUS = [
@@ -34,22 +37,39 @@ SKUS = [
 
 COMPLAINT_CATEGORIES = ["Product Quality", "Billing", "Service", "Cleanliness", "Availability"]
 
+STAFF_ROLES = [
+    "Outlet Supervisor", "Cashier", "Cashier", "Floor Associate",
+    "Floor Associate", "Fresh Food Associate", "Inventory Associate",
+    "Customer Service", "Security", "Cleaner",
+]
+
 
 async def seed():
     await init_db()
     async with AsyncSessionLocal() as db:
         for model in (
-            AiRecommendationAudit, DemandForecast,
+            AiRecommendationAudit, DemandForecast, PosTransactionLine, PosTransaction,
             OutletSalesTarget,
             ManualIssue, StoreAuditReport, SeasonalEvent, DeliverySchedule,
             PromotionCampaign, StockOutEvent, InventoryMovement,
-            Alert, Task, Complaint, ManpowerRoster, InventoryItem, SalesRecord, Outlet,
+            Alert, Task, Complaint, EmployeeAttendance, Employee, ManpowerRoster,
+            InventoryItem, SalesRecord, Outlet,
         ):
             await db.execute(delete(model))
 
         outlets = []
-        for name, code, region, mgr in OUTLETS:
-            o = Outlet(name=name, code=code, region=region, manager_name=mgr)
+        for name, code, region, mgr, address, phone, email in OUTLETS:
+            o = Outlet(
+                name=name,
+                code=code,
+                region=region,
+                manager_name=mgr,
+                address=address,
+                contact_phone=phone,
+                contact_email=email,
+                opening_date=dt.date(2021, random.randint(1, 12), random.randint(1, 24)),
+                is_active=True,
+            )
             db.add(o)
             outlets.append(o)
         await db.flush()
@@ -162,6 +182,73 @@ async def seed():
                     present_staff=present,
                     peak_hour_footfall_forecast=random.randint(400, 1200),
                 ))
+
+            # Employee attendance - last 7 days, filtered by outlet/date in the UI.
+            first_names = ["Ayesha", "Rahim", "Sadia", "Imran", "Nabila", "Tanvir", "Mitu", "Hasan", "Ruma", "Jahid"]
+            last_names = ["Akter", "Islam", "Hossain", "Rahman", "Karim", "Begum", "Ahmed", "Chowdhury", "Alam", "Sultana"]
+            outlet_staff = [
+                Employee(
+                    outlet_id=o.id,
+                    employee_code=f"EMP-{o.code}-{idx + 1:03d}",
+                    name=f"{first_names[idx]} {last_names[idx]}",
+                    email=f"emp-{o.code.lower()}-{idx + 1:03d}@shwapno.example",
+                    phone=f"+88018{o.id:02d}{idx + 1:06d}",
+                    designation=role,
+                    hire_date=today - dt.timedelta(days=180 + idx * 17),
+                    is_active=True,
+                )
+                for idx, role in enumerate(STAFF_ROLES)
+            ]
+            db.add_all(outlet_staff)
+            await db.flush()
+
+            for d_offset in range(6, -1, -1):
+                attendance_date = today - dt.timedelta(days=d_offset)
+                is_thursday = attendance_date.weekday() == 3
+                for idx, employee in enumerate(outlet_staff):
+                    start, end = dt.time(9, 0), dt.time(18, 0)
+                    status = random.choices(
+                        [
+                            AttendanceStatus.PRESENT,
+                            AttendanceStatus.LATE,
+                            AttendanceStatus.ABSENT,
+                            AttendanceStatus.LEAVE,
+                            AttendanceStatus.HALF_DAY,
+                        ],
+                        weights=[74, 11, 7, 4, 4],
+                    )[0]
+                    if is_thursday and idx in (2, 5):
+                        status = AttendanceStatus.LATE
+                    if is_thursday and idx == 8:
+                        status = AttendanceStatus.ABSENT
+
+                    check_in = None
+                    check_out = None
+                    note = ""
+                    if status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
+                        late_minutes = random.randint(8, 32) if status == AttendanceStatus.LATE else random.randint(-10, 5)
+                        check_in = dt.datetime.combine(attendance_date, start) + dt.timedelta(minutes=late_minutes)
+                        check_out = dt.datetime.combine(attendance_date, end) + dt.timedelta(minutes=random.randint(-12, 18))
+                        note = "Late arrival logged by supervisor" if status == AttendanceStatus.LATE else "Biometric punch synced"
+                    elif status == AttendanceStatus.HALF_DAY:
+                        check_in = dt.datetime.combine(attendance_date, start) + dt.timedelta(minutes=random.randint(-5, 10))
+                        check_out = check_in + dt.timedelta(hours=4)
+                        note = "Half-day attendance approved"
+                    elif status == AttendanceStatus.ABSENT:
+                        note = "No punch recorded"
+                    else:
+                        note = "Approved leave"
+
+                    working_hours = round((check_out - check_in).total_seconds() / 3600, 2) if check_in and check_out else 0.0
+                    db.add(EmployeeAttendance(
+                        employee_id=employee.id,
+                        attendance_date=attendance_date,
+                        check_in_at=check_in,
+                        check_out_at=check_out,
+                        status=status,
+                        working_hours=working_hours,
+                        remarks=note,
+                    ))
 
             # Complaints - a mix of open/resolved
             for _ in range(random.randint(2, 5)):
@@ -371,6 +458,7 @@ async def seed():
 
         await db.commit()
         await ensure_product_categories(db)
+        await ensure_pos_demo_data(db)
     print("Seed data created.")
 
 

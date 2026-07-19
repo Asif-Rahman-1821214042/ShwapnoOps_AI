@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import (
     DeliverySchedule, DemandForecast, InventoryItem, InventoryMovement,
     ProductCategory, PromotionCampaign, SalesRecord, StockOutEvent,
+    PosTransactionLine,
 )
 
 
@@ -17,6 +18,7 @@ SKU_TABLES = (
     PromotionCampaign,
     DeliverySchedule,
     DemandForecast,
+    PosTransactionLine,
 )
 
 

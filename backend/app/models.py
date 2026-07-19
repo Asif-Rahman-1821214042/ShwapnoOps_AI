@@ -1,7 +1,8 @@
 import enum
 import datetime as dt
 from sqlalchemy import (
-    String, Integer, Float, DateTime, ForeignKey, Enum, Boolean, Text, JSON
+    String, Integer, Float, DateTime, ForeignKey, Enum, Boolean, Text, JSON, Time,
+    UniqueConstraint, Index
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -31,10 +32,18 @@ class Outlet(Base):
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     region: Mapped[str] = mapped_column(String(80), default="Dhaka")
     manager_name: Mapped[str] = mapped_column(String(120), default="")
+    address: Mapped[str] = mapped_column(String(240), default="")
+    contact_phone: Mapped[str] = mapped_column(String(40), default="")
+    contact_email: Mapped[str] = mapped_column(String(120), default="")
+    opening_date: Mapped[dt.date | None] = mapped_column(nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     sales: Mapped[list["SalesRecord"]] = relationship(back_populates="outlet")
+    pos_transactions: Mapped[list["PosTransaction"]] = relationship(back_populates="outlet")
+    pos_terminals: Mapped[list["PosTerminal"]] = relationship(back_populates="outlet")
     inventory: Mapped[list["InventoryItem"]] = relationship(back_populates="outlet")
     roster: Mapped[list["ManpowerRoster"]] = relationship(back_populates="outlet")
+    employees: Mapped[list["Employee"]] = relationship(back_populates="outlet")
     complaints: Mapped[list["Complaint"]] = relationship(back_populates="outlet")
     tasks: Mapped[list["Task"]] = relationship(back_populates="outlet")
     alerts: Mapped[list["Alert"]] = relationship(back_populates="outlet")
@@ -66,6 +75,125 @@ class SalesRecord(Base):
     is_festival_period: Mapped[bool] = mapped_column(Boolean, default=False)
 
     outlet: Mapped["Outlet"] = relationship(back_populates="sales")
+    product_category: Mapped["ProductCategory | None"] = relationship()
+
+
+class PosPaymentMethod(str, enum.Enum):
+    CASH = "cash"
+    CARD = "card"
+    MFS = "mfs"
+
+
+class PosTerminal(Base):
+    __tablename__ = "pos_terminals"
+    __table_args__ = (UniqueConstraint("outlet_id", "code", name="uq_pos_terminal_outlet_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    outlet_id: Mapped[int] = mapped_column(ForeignKey("outlets.id", ondelete="RESTRICT"), index=True)
+    code: Mapped[str] = mapped_column(String(30))
+    name: Mapped[str] = mapped_column(String(80))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    outlet: Mapped["Outlet"] = relationship(back_populates="pos_terminals")
+    orders: Mapped[list["PosTransaction"]] = relationship(back_populates="terminal")
+
+
+class Customer(Base):
+    __tablename__ = "customers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), default="Walk-in Customer")
+    phone: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+    orders: Mapped[list["PosTransaction"]] = relationship(back_populates="customer")
+
+
+class PaymentMethod(Base):
+    __tablename__ = "payment_methods"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(60), unique=True)
+    is_mobile_financial_service: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_digital: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    payments: Mapped[list["PosPayment"]] = relationship(back_populates="payment_method")
+
+
+class PosTransaction(Base):
+    """POS receipt header. Product-level values live in PosTransactionLine."""
+    __tablename__ = "pos_transactions"
+    __table_args__ = (
+        Index("ix_pos_transactions_outlet_time", "outlet_id", "transaction_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    outlet_id: Mapped[int] = mapped_column(ForeignKey("outlets.id", ondelete="RESTRICT"), index=True)
+    receipt_no: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    transaction_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    cashier_name: Mapped[str] = mapped_column(String(120), default="")
+    payment_method: Mapped[PosPaymentMethod] = mapped_column(Enum(PosPaymentMethod), default=PosPaymentMethod.CASH)
+    terminal_id: Mapped[int | None] = mapped_column(ForeignKey("pos_terminals.id", ondelete="RESTRICT"), nullable=True, index=True)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True)
+    cashier_employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id", ondelete="SET NULL"), nullable=True, index=True)
+    subtotal: Mapped[float] = mapped_column(Float, default=0.0)
+    discount_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    tax_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    total_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="completed")
+    order_status: Mapped[str] = mapped_column(String(20), default="completed", index=True)
+    payment_status: Mapped[str] = mapped_column(String(20), default="paid", index=True)
+    paid_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+    outlet: Mapped["Outlet"] = relationship(back_populates="pos_transactions")
+    terminal: Mapped["PosTerminal | None"] = relationship(back_populates="orders")
+    customer: Mapped["Customer | None"] = relationship(back_populates="orders")
+    cashier_employee: Mapped["Employee | None"] = relationship()
+    lines: Mapped[list["PosTransactionLine"]] = relationship(
+        back_populates="transaction", cascade="all, delete-orphan"
+    )
+    payments: Mapped[list["PosPayment"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+
+
+class PosPayment(Base):
+    __tablename__ = "pos_payments"
+    __table_args__ = (Index("ix_pos_payments_order_status", "transaction_id", "status"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(ForeignKey("pos_transactions.id", ondelete="CASCADE"), index=True)
+    payment_method_id: Mapped[int] = mapped_column(ForeignKey("payment_methods.id", ondelete="RESTRICT"), index=True)
+    transaction_reference: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True, index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(20), default="paid", index=True)
+    paid_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+
+    order: Mapped["PosTransaction"] = relationship(back_populates="payments")
+    payment_method: Mapped["PaymentMethod"] = relationship(back_populates="payments")
+
+
+class PosTransactionLine(Base):
+    """Immutable product lines belonging to one POS receipt."""
+    __tablename__ = "pos_transaction_lines"
+    __table_args__ = (Index("ix_pos_transaction_lines_transaction", "transaction_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("pos_transactions.id", ondelete="CASCADE"), index=True
+    )
+    sku: Mapped[str] = mapped_column(String(60))
+    product_name: Mapped[str] = mapped_column(String(140))
+    category: Mapped[str] = mapped_column(String(60))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("product_categories.id"), nullable=True, index=True)
+    quantity: Mapped[int] = mapped_column(Integer)
+    unit_price: Mapped[float] = mapped_column(Float)
+    discount_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    line_total: Mapped[float] = mapped_column(Float)
+
+    transaction: Mapped["PosTransaction"] = relationship(back_populates="lines")
     product_category: Mapped["ProductCategory | None"] = relationship()
 
 
@@ -167,6 +295,59 @@ class ManpowerRoster(Base):
     peak_hour_footfall_forecast: Mapped[int] = mapped_column(Integer, default=0)
 
     outlet: Mapped["Outlet"] = relationship(back_populates="roster")
+
+
+class AttendanceStatus(str, enum.Enum):
+    PRESENT = "present"
+    LATE = "late"
+    ABSENT = "absent"
+    LEAVE = "leave"
+    HALF_DAY = "half_day"
+
+
+class Employee(Base):
+    """Employee master data with current outlet assignment."""
+    __tablename__ = "employees"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    outlet_id: Mapped[int] = mapped_column(ForeignKey("outlets.id", ondelete="RESTRICT"), index=True)
+    employee_code: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    designation: Mapped[str] = mapped_column(String(80))
+    hire_date: Mapped[dt.date | None] = mapped_column(nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    outlet: Mapped["Outlet"] = relationship(back_populates="employees")
+    attendance_records: Mapped[list["EmployeeAttendance"]] = relationship(
+        back_populates="employee",
+        cascade="all, delete-orphan",
+    )
+
+
+class EmployeeAttendance(Base):
+    """Employee-level daily attendance record. Employee/outlet details stay in master tables."""
+    __tablename__ = "employee_attendance"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "attendance_date", name="uq_employee_attendance_employee_date"),
+        Index("ix_employee_attendance_employee_date", "employee_id", "attendance_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    employee_id: Mapped[int] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"), index=True)
+    attendance_date: Mapped[dt.date] = mapped_column(index=True)
+    check_in_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    check_out_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[AttendanceStatus] = mapped_column(Enum(AttendanceStatus), default=AttendanceStatus.PRESENT)
+    working_hours: Mapped[float] = mapped_column(Float, default=0.0)
+    remarks: Mapped[str] = mapped_column(String(180), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+    employee: Mapped["Employee"] = relationship(back_populates="attendance_records")
 
 
 class ComplaintStatus(str, enum.Enum):
@@ -336,6 +517,7 @@ class Task(Base):
     status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.PENDING)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
     due_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     outlet: Mapped["Outlet"] = relationship(back_populates="tasks")
 

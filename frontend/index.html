@@ -87,6 +87,11 @@
     font-size:12px; letter-spacing:.14em; color:var(--text-lo); font-family:'IBM Plex Mono';
     text-transform:uppercase; margin:0 0 14px; display:flex; justify-content:space-between; align-items:center;
   }
+  .panel-tools{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .panel-tools input{
+    background:var(--panel-2); color:var(--paper); border:1px solid var(--line);
+    padding:7px 9px; border-radius:8px; font-family:'IBM Plex Mono'; font-size:11px;
+  }
 
   /* ---- Scorecard "ticket" ---- */
   .ticket{
@@ -600,6 +605,11 @@
   .status-open,.status-critical{background:#FEF3F2;color:#B42318;}
   .status-in_progress,.status-warning{background:#FFFAEB;color:#B54708;}
   .status-resolved,.status-info{background:#ECFDF3;color:#067647;}
+  .status-present{background:#ECFDF3;color:#067647;}
+  .status-late{background:#FFFAEB;color:#B54708;}
+  .status-absent{background:#FEF3F2;color:#B42318;}
+  .status-leave{background:#F2F4F7;color:#475467;}
+  .status-half_day{background:#EEF4FF;color:#175CD3;}
   @media (max-width:900px){
     header{align-items:flex-start; gap:14px; flex-direction:column;}
     .top-controls{width:100%; justify-content:space-between;}
@@ -639,6 +649,19 @@
   .panel:hover,.ticket:hover,.calendar-note:hover{box-shadow:0 10px 30px rgba(16,24,40,.075);}
   .panel-title{font-size:11px;color:#475467;margin-bottom:16px;}
   .target-card{border-radius:10px;background:#FCFCFD;}
+  .pos-workspace{margin:18px 0;border-left:4px solid #175CD3;}
+  .pos-workspace-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-bottom:1px solid #EAECF0;}
+  .pos-workspace-head h3{margin:0;color:#101828;font-size:15px;letter-spacing:0;}
+  .pos-workspace-head p{margin:4px 0 0;color:#667085;font-size:12px;}
+  .pos-filter-bar{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr)) auto;gap:10px;margin-bottom:16px;}
+  .pos-filter-bar label{display:grid;gap:5px;color:#667085;font:700 10px 'IBM Plex Mono',monospace;text-transform:uppercase;}
+  .pos-filter-bar select,.pos-filter-bar input{min-width:0;width:100%;padding:8px;border:1px solid #D0D5DD;border-radius:7px;background:#fff;font:500 12px 'IBM Plex Sans',sans-serif;}
+  .pos-kpi-grid,.pos-payment-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
+  .pos-kpi,.pos-payment{padding:13px;border:1px solid #EAECF0;border-radius:8px;background:#FCFCFD;}
+  .pos-kpi span,.pos-payment b{display:block;color:#667085;font:700 10px 'IBM Plex Mono',monospace;text-transform:uppercase;}
+  .pos-kpi strong,.pos-payment strong{display:block;margin:7px 0 4px;color:#101828;font-size:20px;letter-spacing:-.03em;}.pos-kpi small,.pos-payment small{color:#667085;font-size:11px;line-height:1.35;}
+  .pos-payment b{color:#475467;}.pos-payment strong{font-size:17px;}.pos-subhead{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:20px 0 10px;color:#475467;font:700 11px 'IBM Plex Mono',monospace;text-transform:uppercase;}
+  .pos-order-tools{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr)) auto;gap:10px;margin:0 0 12px;}.pos-order-tools select,.pos-order-tools input{min-width:0;width:100%;padding:8px;border:1px solid #D0D5DD;border-radius:7px;background:#fff;}.pos-table-wrap{overflow:auto;}.pos-table-wrap table{min-width:980px;}.pos-pagination{display:flex;justify-content:flex-end;align-items:center;gap:9px;margin-top:12px;font:600 11px 'IBM Plex Mono',monospace;color:#667085;}
   .progress-track div{background:linear-gradient(90deg,#175CD3,#53B1FD);transition:width .55s ease;}
   .calendar-note{min-height:126px}.weather-card{border-top:1px solid var(--line);border-left:4px solid #175CD3;}
   .ticket{border-left:4px solid #15803D;}
@@ -649,8 +672,9 @@
   @media(max-width:900px){
     header{padding:14px}.dashboard-hero{align-items:flex-start;flex-direction:column}.dashboard-actions{width:100%;justify-content:space-between}
     .top-controls{overflow-x:auto}.nav-link,select{white-space:nowrap}.overview{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .pos-filter-bar,.pos-kpi-grid,.pos-payment-grid,.pos-order-tools{grid-template-columns:repeat(2,minmax(0,1fr));}
   }
-  @media(max-width:560px){.overview{grid-template-columns:1fr}.dashboard-actions{align-items:flex-start;flex-direction:column}}
+  @media(max-width:560px){.overview{grid-template-columns:1fr}.dashboard-actions{align-items:flex-start;flex-direction:column}.pos-workspace-head{align-items:flex-start;flex-direction:column}.pos-filter-bar,.pos-kpi-grid,.pos-payment-grid,.pos-order-tools{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -665,7 +689,8 @@
   </div>
   <div class="top-controls">
     <a class="nav-link" href="/analytics.html?v=2">Analytics</a>
-    <a class="nav-link" href="/data-tables.html?view=categories">Data Tables</a>
+    <a class="nav-link" id="dataTablesLink" href="/data-tables.html?view=categories">Data Tables</a>
+    <a class="nav-link" href="/chatbot.html">Chatbot</a>
     <div class="live-pill"><span class="live-dot"></span><span id="wsStatus">Connecting…</span></div>
     <select id="outletSelect"></select>
   </div>
@@ -686,10 +711,41 @@
 
   <div class="overview">
     <div class="metric"><span>Outlet Readiness</span><strong id="metricReadiness">--</strong><small>Composite operating health</small></div>
-    <div class="metric"><span>Revenue Today</span><strong id="metricRevenue">--</strong><small>Live POS demo feed</small></div>
+    <div class="metric"><span>POS Collection Today</span><strong id="metricRevenue">--</strong><small id="metricRevenueNote">Loading POS payments…</small></div>
     <div class="metric"><span>Stock Exceptions</span><strong id="metricStock">--</strong><small>Medium to critical risk</small></div>
-    <div class="metric"><span>Open Issues</span><strong id="metricIssues">--</strong><small>Complaints and critical alerts</small></div>
+    <div class="metric"><span>POS & Operations Actions</span><strong id="metricIssues">--</strong><small id="metricIssuesNote">Payment follow-ups, complaints, and alerts</small></div>
   </div>
+
+  <section class="panel pos-workspace" aria-labelledby="posWorkspaceTitle">
+    <div class="pos-workspace-head">
+      <div>
+        <h3 id="posWorkspaceTitle">POS Operations</h3>
+        <p>Sales, payments, outlet filters, and digital order follow-up for the selected outlet.</p>
+      </div>
+      <span class="status-pill status-info" id="posOutletScope">Outlet scoped</span>
+    </div>
+    <div class="pos-filter-bar">
+      <label>Period<select id="posPeriod"><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">This week</option><option value="month">This month</option></select></label>
+      <label>Start date<input id="posStartDate" type="date"></label>
+      <label>End date<input id="posEndDate" type="date"></label>
+      <label>Terminal<select id="posTerminal"><option value="">All terminals</option></select></label>
+      <label>Cashier<select id="posCashier"><option value="">All cashiers</option></select></label>
+      <button class="primary-btn" id="posApplyBtn">Apply POS filters</button>
+    </div>
+    <div class="pos-kpi-grid" id="posKpis"></div>
+    <div class="pos-subhead"><span>Payment Method Summary</span><span id="posRange">--</span></div>
+    <div class="pos-payment-grid" id="posPayments"></div>
+    <div class="pos-subhead"><span>Digital Payment Orders</span><a class="export-btn" id="posExport" href="#">Export CSV</a></div>
+    <div class="pos-order-tools">
+      <select id="posMethod"><option value="">All digital methods</option></select>
+      <select id="posPaymentStatus"><option value="">All payment statuses</option><option value="paid">Paid</option><option value="partial">Partial</option><option value="unpaid">Unpaid</option><option value="refunded">Refunded</option></select>
+      <select id="posOrderStatus"><option value="">All order statuses</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option><option value="refunded">Refunded</option></select>
+      <input id="posSearch" placeholder="Invoice, phone, transaction ID">
+      <button class="export-btn" id="posSearchBtn">Search</button>
+    </div>
+    <div class="pos-table-wrap"><table><thead><tr><th>Invoice</th><th>Time</th><th>Customer</th><th>Cashier</th><th>Method</th><th>Transaction</th><th>Order</th><th>Paid</th><th>Payment</th><th>Order</th></tr></thead><tbody id="posOrders"></tbody></table></div>
+    <div class="pos-pagination"><button class="export-btn" id="posPrev">Previous</button><span id="posPage">--</span><button class="export-btn" id="posNext">Next</button></div>
+  </section>
 
   <div class="panel target-panel">
     <div class="panel-title"><span>Sales Target Tracker</span><span id="targetMeta">Targets loaded from DB</span></div>
@@ -761,6 +817,8 @@
         </span>
       </div>
       <div class="task-list" id="taskList"></div>
+      <div class="panel-title" style="margin-top:16px;"><span>Completed Today</span><span id="doneTaskMeta">-- done</span></div>
+      <div class="task-list done-list" id="doneTaskList"></div>
     </div>
   </div>
 
@@ -773,6 +831,14 @@
       <div class="panel-title"><span>Live Ops Receipt</span></div>
       <div class="receipt-wrap" id="receipt"></div>
     </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:18px;">
+    <div class="panel-title"><span>Recent POS Transactions</span><span id="posMeta">-- receipts today</span></div>
+    <table>
+      <thead><tr><th>Receipt</th><th>Time</th><th>Cashier</th><th>Payment</th><th>Items</th><th>Total</th><th>Status</th></tr></thead>
+      <tbody id="posTable"></tbody>
+    </table>
   </div>
 
   <div class="panel">
@@ -834,27 +900,34 @@
     </div>
 
     <div class="panel">
-      <div class="panel-title"><span>Shift-wise Manpower</span></div>
+      <div class="panel-title"><span>Peak Manpower Coverage</span><span id="peakMeta">Predicting peak</span></div>
       <div id="shiftRows"></div>
       <div class="rec-note" id="shiftRec" style="display:none;"></div>
     </div>
 
+  </div>
+
+  <div class="grid g-wide">
     <div class="panel">
-      <div class="panel-title"><span>Ask ShwapnoOps</span></div>
-      <div class="chips">
-        <div class="chip" data-q="What should I prioritize today?">Top priorities</div>
-        <div class="chip" data-q="Which SKUs are at stock risk?">Stock risk</div>
-        <div class="chip" data-q="How is my manpower coverage?">Manpower</div>
-        <div class="chip" data-q="What is today's date, time and next festival in 7 days?">Calendar</div>
-        <div class="chip" data-q="What's my performance score?">Scorecard</div>
-      </div>
-      <div class="chat-box">
-        <div class="chat-log" id="chatLog"></div>
-        <div class="chat-input">
-          <input id="chatInput" type="text" placeholder="Ask about stock, staffing, complaints…" />
-          <button id="chatSend">Send</button>
+      <div class="panel-title"><span>Employees</span><span id="employeeMeta">-- employees</span></div>
+      <table>
+        <thead><tr><th>Employee</th><th>Designation</th><th>Phone</th><th>Status</th></tr></thead>
+        <tbody id="employeeTable"></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">
+        <span>Employee Attendance</span>
+        <div class="panel-tools">
+          <span id="attendanceMeta">Today</span>
+          <input id="attendanceDate" type="date" />
         </div>
       </div>
+      <table>
+        <thead><tr><th>Employee</th><th>Designation</th><th>In</th><th>Out</th><th>Hours</th><th>Status</th></tr></thead>
+        <tbody id="attendanceTable"></tbody>
+      </table>
     </div>
   </div>
 
@@ -945,6 +1018,8 @@ const apiInput = document.getElementById('apiBase');
 apiInput.value = '';
 let API = apiInput.value;
 let currentOutlet = null;
+let posPage = 1;
+let posChoicesOutlet = null;
 let ws = null;
 let businessClock = null;
 
@@ -964,6 +1039,24 @@ function timeAgo(iso){
 function shortDate(value){
   if(!value) return '—';
   return new Date(value + (String(value).includes('T') ? (String(value).endsWith('Z') ? '' : 'Z') : 'T00:00:00')).toLocaleDateString('en-GB', {day:'2-digit', month:'short'});
+}
+function todayISO(){
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+function formatTimeValue(value){
+  if(!value) return '—';
+  if(String(value).includes('T')) return timeAgo(value);
+  return String(value).slice(0, 5);
+}
+function updateDataTablesLink(){
+  const date = document.getElementById('attendanceDate')?.value || todayISO();
+  const url = new URLSearchParams();
+  url.set('view', 'employees');
+  if(currentOutlet) url.set('outlet_id', currentOutlet);
+  url.set('date', date);
+  document.getElementById('dataTablesLink').href = `/data-tables.html?${url.toString()}`;
 }
 function formatBusinessDateTime(date, timezone){
   const datePart = new Intl.DateTimeFormat('en-GB', {day:'2-digit', month:'short', timeZone:timezone}).format(date);
@@ -1001,6 +1094,7 @@ async function loadOutlets(){
   currentOutlet = outlets[0]?.id;
   sel.addEventListener('change', (e) => {
     currentOutlet = Number(e.target.value);
+    posPage = 1;
     connectWS();
     refreshAll();
   });
@@ -1025,8 +1119,76 @@ async function loadScorecard(){
   document.getElementById('scComplaints').textContent = c.open_complaints;
   document.getElementById('scAlerts').textContent = c.critical_alerts;
   document.getElementById('metricReadiness').textContent = c.productivity_score + '/100';
-  document.getElementById('metricRevenue').textContent = '৳ ' + fmtMoney(c.sales_today);
-  document.getElementById('metricIssues').textContent = c.open_complaints + c.critical_alerts;
+}
+
+async function loadPosDashboardSignals(){
+  const pos = await api(`/api/pos/kpis?period=today&outlet_id=${currentOutlet}`);
+  const summary = await api(`/api/pos/summary?period=today&outlet_id=${currentOutlet}`);
+  const scorecard = await api(`/api/dashboard/scorecards/${currentOutlet}`);
+  const money = value => '৳ ' + fmtMoney(value || 0);
+  const pending = summary.pending_unpaid || 0;
+  const exceptions = (summary.cancelled_orders || 0) + (summary.refunded_orders || 0);
+  document.getElementById('metricRevenue').textContent = money(summary.total_paid);
+  document.getElementById('metricRevenueNote').textContent = `${pos.digital_cash.sales_pct}% digital · ${pos.payment_completion.paid_orders} paid POS order${pos.payment_completion.paid_orders === 1 ? '' : 's'}`;
+  const operationalIssues = scorecard.open_complaints + scorecard.critical_alerts;
+  document.getElementById('metricIssues').textContent = operationalIssues + pos.orders.pending + exceptions;
+  document.getElementById('metricIssuesNote').textContent = `${pos.orders.pending} payment follow-up · ${exceptions} cancelled/refunded · ${operationalIssues} ops issue${operationalIssues === 1 ? '' : 's'}`;
+}
+
+function posParams(includeOrder = false){
+  const params = new URLSearchParams({period: document.getElementById('posPeriod').value, outlet_id: String(currentOutlet)});
+  [['start_date','posStartDate'],['end_date','posEndDate'],['terminal_id','posTerminal'],['cashier_employee_id','posCashier']].forEach(([key, id]) => {
+    const value = document.getElementById(id).value;
+    if(value) params.set(key, value);
+  });
+  if(includeOrder) [['payment_method_id','posMethod'],['payment_status','posPaymentStatus'],['order_status','posOrderStatus'],['search','posSearch']].forEach(([key, id]) => {
+    const value = document.getElementById(id).value;
+    if(value) params.set(key, value);
+  });
+  return params;
+}
+
+async function loadPosChoices(){
+  if(posChoicesOutlet === currentOutlet) return;
+  const [terminals, cashiers, methods] = await Promise.all([
+    api(`/api/pos/terminals?outlet_id=${currentOutlet}`), api(`/api/pos/cashiers?outlet_id=${currentOutlet}`), api('/api/pos/payment-methods')
+  ]);
+  document.getElementById('posOutletScope').textContent = document.getElementById('outletSelect').selectedOptions[0]?.textContent || 'Outlet scoped';
+  document.getElementById('posTerminal').innerHTML = '<option value="">All terminals</option>' + terminals.map(row => `<option value="${row.id}">${escapeHtml(row.name)}</option>`).join('');
+  document.getElementById('posCashier').innerHTML = '<option value="">All cashiers</option>' + cashiers.map(row => `<option value="${row.id}">${escapeHtml(row.name)}</option>`).join('');
+  document.getElementById('posMethod').innerHTML = '<option value="">All digital methods</option>' + methods.filter(row => row.is_digital).map(row => `<option value="${row.id}">${escapeHtml(row.name)}</option>`).join('');
+  posChoicesOutlet = currentOutlet;
+}
+
+async function loadPosWorkspace(){
+  await loadPosChoices();
+  const params = posParams();
+  const [kpis, summary] = await Promise.all([api(`/api/pos/kpis?${params}`), api(`/api/pos/summary?${params}`)]);
+  const money = value => `৳ ${fmtMoney(value || 0)}`;
+  document.getElementById('posRange').textContent = `${summary.range.start} to ${summary.range.end}`;
+  document.getElementById('posKpis').innerHTML = [
+    ['Sales & target', money(kpis.sales.amount), `${kpis.sales.achievement_pct ?? 0}% of ${money(kpis.sales.target)}`],
+    ['Digital collection', money(kpis.digital_cash.amount), `${kpis.digital_cash.sales_pct}% of completed sales`],
+    ['Completed orders', kpis.orders.completed, `${kpis.orders.pending} pending · ${kpis.orders.cancelled} cancelled`],
+    ['Average basket', money(kpis.basket.average_value), `${kpis.basket.average_items} items per order`],
+    ['Payment completion', `${kpis.payment_completion.rate}%`, `${kpis.payment_completion.paid_orders} paid · ${kpis.payment_completion.pending_or_failed} pending`],
+    ['Stock availability', `${kpis.availability.pct}%`, `${kpis.availability.low_stock} low-stock SKU warnings`],
+    ['Employee attendance', `${kpis.attendance.present}/${kpis.attendance.scheduled}`, `${kpis.attendance.absent} absent · ${kpis.attendance.leave} on leave`],
+    ['POS productivity', `${kpis.productivity.score}%`, 'Sales, payments, staff, and stock']
+  ].map(row => `<div class="pos-kpi"><span>${row[0]}</span><strong>${row[1]}</strong><small>${row[2]}</small></div>`).join('');
+  document.getElementById('posPayments').innerHTML = summary.payment_methods.map(row => `<div class="pos-payment"><b>${escapeHtml(row.name)}</b><strong>${money(row.received_amount)}</strong><small>${row.orders} orders · ${row.sales_pct}% of sales</small></div>`).join('');
+  await loadPosOrders();
+}
+
+async function loadPosOrders(){
+  const params = posParams(true); params.set('page', String(posPage)); params.set('page_size', '10');
+  const data = await api(`/api/pos/mobile-orders?${params}`);
+  document.getElementById('posExport').href = `/api/pos/mobile-orders/export.csv?${posParams(true)}`;
+  document.getElementById('posOrders').innerHTML = data.items.map(row => { const payment = row.payments[0] || {}; return `<tr><td>${escapeHtml(row.invoice_no)}</td><td>${new Date(row.transaction_at).toLocaleString('en-GB')}</td><td>${escapeHtml(row.customer_name)}</td><td>${escapeHtml(row.cashier_name)}</td><td>${escapeHtml(payment.payment_method || '—')}</td><td>${escapeHtml(payment.transaction_id || '—')}</td><td>৳ ${fmtMoney(row.order_amount)}</td><td>৳ ${fmtMoney(row.paid_amount)}</td><td>${escapeHtml(row.payment_status)}</td><td>${escapeHtml(row.order_status)}</td></tr>`; }).join('') || '<tr><td colspan="10">No digital payment orders match these filters.</td></tr>';
+  const pages = Math.max(1, Math.ceil(data.total / data.page_size));
+  document.getElementById('posPage').textContent = `Page ${data.page} of ${pages} · ${data.total} orders`;
+  document.getElementById('posPrev').disabled = posPage === 1;
+  document.getElementById('posNext').disabled = posPage >= pages;
 }
 
 async function loadSalesTargets(){
@@ -1066,6 +1228,22 @@ async function loadTasks(){
       <button onclick="completeTask(${t.id})">Mark done</button>
     </div>`;
   }).join('');
+}
+
+async function loadDoneTasks(){
+  const tasks = await api(`/api/tasks?outlet_id=${currentOutlet}&completed_today=true`);
+  document.getElementById('doneTaskMeta').textContent = `${tasks.length} done`;
+  const list = document.getElementById('doneTaskList');
+  list.innerHTML = tasks.map(t => `
+    <div class="task-card">
+      <div class="score">✓</div>
+      <div>
+        <div class="title">${escapeHtml(t.title)}</div>
+        <div class="meta">${t.source} · done ${t.completed_at ? timeAgo(t.completed_at) : 'today'}</div>
+      </div>
+      <span class="status-pill status-resolved">done</span>
+    </div>
+  `).join('') || '<div class="empty-note">No tasks marked done today yet.</div>';
 }
 
 function showTaskQueueLoading(){
@@ -1207,6 +1385,7 @@ async function completeTask(id){
     body: JSON.stringify({status:'done'})
   });
   loadTasks();
+  loadDoneTasks();
   loadScorecard();
 }
 window.completeTask = completeTask;
@@ -1227,15 +1406,20 @@ async function loadInventory(){
 
 async function loadShifts(){
   const data = await api(`/api/manpower/optimize?outlet_id=${currentOutlet}`);
-  document.getElementById('shiftRows').innerHTML = data.shifts.map(s => {
-    const pct = s.required_staff ? Math.round(100*s.present_staff/s.required_staff) : 100;
-    const barCls = pct < 60 ? 'low' : (pct < 85 ? 'mid' : '');
-    return `<div class="shift-row">
-      <div class="shift-name">${s.shift}</div>
-      <div class="shift-bar ${barCls}"><div style="width:${Math.min(pct,100)}%"></div></div>
-      <div class="shift-pct">${pct}%</div>
-    </div>`;
-  }).join('');
+  const peak = data.peak_prediction || {};
+  const staffing = data.staffing || {};
+  document.getElementById('peakMeta').textContent = peak.peak_window
+    ? `${peak.peak_window} · ${peak.predicted_daily_footfall} footfall`
+    : 'No peak forecast';
+  const targetStaff = staffing.recommended_on_floor_staff || 0;
+  const availableStaff = staffing.available_staff || 0;
+  const pct = targetStaff ? Math.round(100 * availableStaff / targetStaff) : 100;
+  const barCls = pct < 60 ? 'low' : (pct < 85 ? 'mid' : '');
+  document.getElementById('shiftRows').innerHTML = `<div class="shift-row">
+    <div class="shift-name">Available</div>
+    <div class="shift-bar ${barCls}"><div style="width:${Math.min(pct,100)}%"></div></div>
+    <div class="shift-pct">${availableStaff}/${targetStaff}</div>
+  </div>`;
   const recEl = document.getElementById('shiftRec');
   if(data.recommendation){
     recEl.style.display = 'block';
@@ -1243,6 +1427,37 @@ async function loadShifts(){
   } else {
     recEl.style.display = 'none';
   }
+}
+
+async function loadEmployees(){
+  const rows = await api(`/api/manpower/employees?outlet_id=${currentOutlet}`);
+  document.getElementById('employeeMeta').textContent = `${rows.length} employees`;
+  document.getElementById('employeeTable').innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${escapeHtml(r.name)}</strong><br><span class="mono">${escapeHtml(r.employee_code)}</span></td>
+      <td>${escapeHtml(r.designation)}</td>
+      <td>${escapeHtml(r.phone)}</td>
+      <td><span class="status-pill ${r.is_active ? 'status-present' : 'status-leave'}">${r.is_active ? 'active' : 'inactive'}</span></td>
+    </tr>`).join('') || '<tr><td colspan="4">No employees assigned to this outlet.</td></tr>';
+}
+
+async function loadAttendance(){
+  const dateEl = document.getElementById('attendanceDate');
+  if(!dateEl.value) dateEl.value = todayISO();
+  updateDataTablesLink();
+  const rows = await api(`/api/manpower/attendance?outlet_id=${currentOutlet}&date=${dateEl.value}`);
+  const dateLabel = new Date(`${dateEl.value}T00:00:00`).toLocaleDateString('en-GB', {weekday:'short', day:'2-digit', month:'short'});
+  const presentCount = rows.filter(r => r.status === 'present' || r.status === 'late').length;
+  document.getElementById('attendanceMeta').textContent = `${dateLabel} · ${presentCount}/${rows.length} present`;
+  document.getElementById('attendanceTable').innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${escapeHtml(r.employee_name)}</strong><br><span class="mono">${escapeHtml(r.employee_code)}</span></td>
+      <td>${escapeHtml(r.designation)}</td>
+      <td>${formatTimeValue(r.check_in_at)}</td>
+      <td>${formatTimeValue(r.check_out_at)}</td>
+      <td>${r.working_hours}</td>
+      <td><span class="status-pill status-${r.status}">${escapeHtml(r.status)}</span></td>
+    </tr>`).join('') || '<tr><td colspan="6">No attendance logged for this outlet and date.</td></tr>';
 }
 
 async function loadSalesChart(){
@@ -1292,6 +1507,22 @@ async function loadSalesChart(){
       ${dots}${xLabels}
     </svg>
     <div class="sales-chart-legend"><span style="color:#D97706">■ Revenue (BDT)</span><span style="color:#15803D">● Footfall</span></div>`;
+}
+
+async function loadPosTransactions(){
+  const rows = await api(`/api/pos/transactions?outlet_id=${currentOutlet}&date=${todayISO()}&limit=8`);
+  const summary = await api(`/api/pos/summary?outlet_id=${currentOutlet}&date=${todayISO()}`);
+  document.getElementById('posMeta').textContent = `${summary.orders} receipts · BDT ${fmtMoney(summary.total_sales)}`;
+  document.getElementById('posTable').innerHTML = rows.map(row => `
+    <tr>
+      <td><strong>${escapeHtml(row.receipt_no)}</strong></td>
+      <td>${formatTimeValue(row.transaction_at)}</td>
+      <td>${escapeHtml(row.cashier_name)}</td>
+      <td>${escapeHtml(row.payment_method)}</td>
+      <td>${row.item_count}</td>
+      <td>BDT ${fmtMoney(row.total_amount)}</td>
+      <td><span class="status-pill status-present">${escapeHtml(row.status)}</span></td>
+    </tr>`).join('') || '<tr><td colspan="7">No POS receipts for this outlet today.</td></tr>';
 }
 
 async function loadAlertsInitial(){
@@ -1517,8 +1748,10 @@ async function refreshAll(){
   notice.style.display = 'none';
   const jobs = [
     ['scorecard', loadScorecard()], ['targets', loadSalesTargets()], ['tasks', loadTasks()],
+    ['done tasks', loadDoneTasks()],
     ['inventory', loadInventory()], ['categories', loadCategories()], ['manpower', loadShifts()],
-    ['sales', loadSalesChart()], ['alerts', loadAlertsInitial()], ['complaints', loadComplaints()],
+    ['employees', loadEmployees()], ['attendance', loadAttendance()],
+    ['sales', loadSalesChart()], ['POS', loadPosTransactions()], ['POS signals', loadPosDashboardSignals()], ['POS workspace', loadPosWorkspace()], ['alerts', loadAlertsInitial()], ['complaints', loadComplaints()],
     ['operations', loadOperationalData()], ['calendar', loadCalendarContext()],
     ['weather', loadWeatherContext()], ['forecasts', loadDemandForecasts()],
     ['AI audit', loadRecommendationAudit()]
@@ -1539,6 +1772,14 @@ async function refreshAll(){
 }
 
 document.getElementById('refreshDashboardBtn').addEventListener('click', refreshAll);
+document.getElementById('attendanceDate').addEventListener('change', () => {
+  updateDataTablesLink();
+  loadAttendance();
+});
+document.getElementById('posApplyBtn').addEventListener('click', () => { posPage = 1; loadPosWorkspace(); });
+document.getElementById('posSearchBtn').addEventListener('click', () => { posPage = 1; loadPosOrders(); });
+document.getElementById('posPrev').addEventListener('click', () => { if(posPage > 1){ posPage--; loadPosOrders(); } });
+document.getElementById('posNext').addEventListener('click', () => { posPage++; loadPosOrders(); });
 
 document.getElementById('runForecastBtn').addEventListener('click', async () => {
   const btn = document.getElementById('runForecastBtn');
@@ -1609,42 +1850,11 @@ document.querySelectorAll('.ai-action-btn').forEach(btn => {
   });
 });
 
-/* ---- Chatbot ---- */
-function addChatMsg(text, who){
-  const log = document.getElementById('chatLog');
-  const el = document.createElement('div');
-  el.className = `msg ${who}`;
-  el.textContent = text;
-  log.appendChild(el);
-  log.scrollTop = log.scrollHeight;
-}
-
-async function sendChat(text){
-  if(!text.trim()) return;
-  addChatMsg(text, 'user');
-  document.getElementById('chatInput').value = '';
-  try{
-    const res = await fetch(`${API}/api/chat`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({outlet_id: currentOutlet, message: text})
-    });
-    const data = await res.json();
-    addChatMsg(data.reply, 'bot');
-  }catch(e){
-    addChatMsg("Couldn't reach the assistant — check the API connection.", 'bot');
-  }
-}
-
-document.getElementById('chatSend').addEventListener('click', () => sendChat(document.getElementById('chatInput').value));
-document.getElementById('chatInput').addEventListener('keydown', (e) => { if(e.key==='Enter') sendChat(e.target.value); });
-document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => sendChat(c.dataset.q)));
-
 async function boot(){
   try{
     await loadOutlets();
     connectWS();
     await refreshAll();
-    addChatMsg("Hi, I'm your ShwapnoOps assistant. Ask me about today's priorities, stock, staffing or complaints.", 'bot');
   }catch(e){
     console.error(e);
     document.getElementById('wsStatus').textContent = 'API unreachable';

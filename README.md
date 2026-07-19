@@ -33,6 +33,8 @@ real-time analytics processing.
   graphs with period and revenue/unit controls
 - **Data Tables frontend** (`/frontend/data-tables.html`) — focused views for each
   operational dataset instead of crowding all tables onto the dashboard
+- **POS Summary frontend** (`/frontend/pos-dashboard.html`) — outlet-aware sales,
+  payment, terminal, cashier, and mobile-financial-service order analysis
 - **Seed data generator** — realistic multi-outlet demo data (sales, inventory,
   stock movement, stock-out history, manpower, complaints, campaigns, seasonal
   events, deliveries, audits, manual issues, alerts, and prioritized tasks) so the
@@ -139,7 +141,9 @@ Dashboard pages:
 | Product category availability | `GET /api/categories/summary?outlet_id=1` |
 | Monthly/weekly/daily sales target progress | `GET /api/targets/progress?outlet_id=1` |
 | Inventory + risk levels | `GET /api/inventory?outlet_id=1` |
-| Manpower roster / shift optimizer | `GET /api/manpower?outlet_id=1`, `GET /api/manpower/optimize?outlet_id=1` |
+| Manpower roster / employees / attendance | `GET /api/manpower?outlet_id=1`, `GET /api/manpower/employees?outlet_id=1`, `GET /api/manpower/attendance?outlet_id=1&date=2026-07-16` |
+| Outlet POS receipts | `GET /api/pos/transactions?outlet_id=1&date=2026-07-19`, `GET /api/pos/summary?outlet_id=1` |
+| POS summary and MFS orders | `GET /api/pos/summary?period=month&outlet_id=1`, `GET /api/pos/mobile-orders?outlet_id=1`, `GET /api/pos/mobile-orders/export.csv?outlet_id=1` |
 | Log a complaint | `POST /api/complaints` |
 | Prioritized task queue | `GET /api/tasks?outlet_id=1&status=pending` |
 | Gemini reprioritize task queue from live data | `POST /api/tasks/prioritize?outlet_id=1` |
@@ -174,10 +178,10 @@ Full interactive API reference: run the server and visit `http://localhost:8000/
 | Inventory current stock | `InventoryItem` |
 | Inventory & stock movement data | `InventoryMovement` |
 | Stock-out history | `StockOutEvent` |
-| Manpower roster & attendance | `ManpowerRoster` |
+| Outlet manpower coverage & attendance | `Employee`, `EmployeeAttendance` |
 | Customer complaints/feedback | `Complaint` |
 | Promotion & campaign calendar | `PromotionCampaign` |
-| Peak-hour footfall | `SalesRecord.footfall`, `ManpowerRoster.peak_hour_footfall_forecast` |
+| Peak-hour footfall | `SalesRecord.footfall` |
 | Delivery schedules | `DeliverySchedule` |
 | Outlet operational KPI reports | `ScorecardOut`, dashboard exports, `/api/dashboard/scorecards` |
 | Seasonal/festival trends | `SeasonalEvent`, `SalesRecord.is_festival_period` |

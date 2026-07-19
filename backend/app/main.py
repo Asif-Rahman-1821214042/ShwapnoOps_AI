@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import AsyncSessionLocal, init_db
 from app.config import settings
 from app.workers.background_tasks import start_scheduler, stop_scheduler
-from app.routers import categories, outlets, sales, inventory, manpower, complaints, tasks, alerts, chatbot, dashboard, ws, ai_actions, operations, forecasts, targets
+from app.routers import categories, outlets, sales, pos, inventory, manpower, complaints, tasks, alerts, chatbot, dashboard, ws, ai_actions, operations, forecasts, targets
 from app.services.product_taxonomy import ensure_product_categories
+from app.services.pos_demo import ensure_pos_demo_data
 
 logging.basicConfig(level=logging.INFO)
 
@@ -17,6 +18,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     async with AsyncSessionLocal() as db:
         await ensure_product_categories(db)
+        await ensure_pos_demo_data(db)
     start_scheduler()
     yield
     stop_scheduler()
@@ -40,6 +42,7 @@ app.add_middleware(
 app.include_router(outlets.router)
 app.include_router(categories.router)
 app.include_router(sales.router)
+app.include_router(pos.router)
 app.include_router(inventory.router)
 app.include_router(manpower.router)
 app.include_router(complaints.router)

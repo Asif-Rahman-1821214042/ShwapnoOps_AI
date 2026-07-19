@@ -13,10 +13,24 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
 @router.get("", response_model=list[TaskOut])
-async def list_tasks(outlet_id: int, status: TaskStatus | None = None, db: AsyncSession = Depends(get_db)):
+async def list_tasks(
+    outlet_id: int,
+    status: TaskStatus | None = None,
+    completed_today: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
     stmt = select(Task).where(Task.outlet_id == outlet_id)
     if status:
         stmt = stmt.where(Task.status == status)
+    if completed_today:
+        today = dt.date.today()
+        start = dt.datetime.combine(today, dt.time.min)
+        end = start + dt.timedelta(days=1)
+        stmt = stmt.where(
+            Task.status == TaskStatus.DONE,
+            Task.completed_at >= start,
+            Task.completed_at < end,
+        )
     stmt = stmt.order_by(Task.priority_score.desc())
     return (await db.execute(stmt)).scalars().all()
 
@@ -53,7 +67,12 @@ async def update_task(task_id: int, payload: TaskUpdate, db: AsyncSession = Depe
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(404, "Task not found")
+    previous_status = task.status
     task.status = payload.status
+    if payload.status == TaskStatus.DONE and previous_status != TaskStatus.DONE:
+        task.completed_at = dt.datetime.utcnow()
+    elif payload.status != TaskStatus.DONE:
+        task.completed_at = None
     await db.commit()
     await db.refresh(task)
     return task

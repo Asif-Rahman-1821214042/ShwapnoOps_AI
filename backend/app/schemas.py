@@ -4,7 +4,8 @@ from pydantic import BaseModel, ConfigDict
 from app.models import (
     TaskStatus, TaskSource, AlertSeverity, AlertType, ComplaintStatus,
     InventoryMovementType, CampaignStatus, DeliveryStatus, ManualIssueStatus,
-    ForecastRisk, AiRecommendationStatus,
+    ForecastRisk, AiRecommendationStatus, AttendanceStatus,
+    PosPaymentMethod,
 )
 
 
@@ -15,6 +16,11 @@ class OutletOut(BaseModel):
     code: str
     region: str
     manager_name: str
+    address: str = ""
+    contact_phone: str = ""
+    contact_email: str = ""
+    opening_date: dt.date | None = None
+    is_active: bool = True
 
 
 class ProductCategoryOut(BaseModel):
@@ -38,6 +44,36 @@ class SalesOut(BaseModel):
     revenue: float
     footfall: int
     is_festival_period: bool
+
+
+class PosTransactionLineOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    sku: str
+    product_name: str
+    category: str
+    category_id: int | None
+    quantity: int
+    unit_price: float
+    discount_amount: float
+    line_total: float
+
+
+class PosTransactionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    outlet_id: int
+    receipt_no: str
+    transaction_at: dt.datetime
+    cashier_name: str
+    payment_method: PosPaymentMethod
+    subtotal: float
+    discount_amount: float
+    tax_amount: float
+    total_amount: float
+    item_count: int
+    status: str
+    lines: list[PosTransactionLineOut] = []
 
 
 class OutletSalesTargetIn(BaseModel):
@@ -135,6 +171,55 @@ class ManpowerOut(BaseModel):
     present_staff: int
     peak_hour_footfall_forecast: int
     coverage_pct: float | None = None
+
+
+class EmployeeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    outlet_id: int
+    employee_code: str
+    name: str
+    email: str
+    phone: str
+    designation: str
+    hire_date: dt.date | None
+    is_active: bool
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class EmployeeAttendanceOut(BaseModel):
+    attendance_id: int
+    employee_id: int
+    outlet_id: int
+    employee_code: str
+    employee_name: str
+    email: str
+    phone: str
+    designation: str
+    attendance_date: dt.date
+    check_in_at: dt.datetime | None
+    check_out_at: dt.datetime | None
+    status: AttendanceStatus
+    working_hours: float
+    remarks: str
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+
+class EmployeeAttendanceSummaryOut(BaseModel):
+    date: dt.date
+    total_employees: int
+    available_staff: int
+    unavailable_staff: int
+    present: int
+    late: int
+    absent: int
+    leave: int
+    half_day: int
+    attendance_pct: float | None
+    total_working_hours: float
+    exceptions: list[dict]
 
 
 class ComplaintIn(BaseModel):
@@ -274,6 +359,7 @@ class TaskOut(BaseModel):
     status: TaskStatus
     created_at: dt.datetime
     due_at: dt.datetime | None
+    completed_at: dt.datetime | None
 
 
 class TaskUpdate(BaseModel):

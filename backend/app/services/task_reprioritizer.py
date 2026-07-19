@@ -10,6 +10,7 @@ from app.models import (
     InventoryItem, ManpowerRoster, ManualIssue, ManualIssueStatus, StoreAuditReport,
     Task, TaskSource, TaskStatus,
 )
+from app.services.attendance import attendance_summary, predict_peak_context
 from app.services.business_calendar import business_calendar_context
 from app.services.prioritization import ScoringInput, hours_between, score_task
 
@@ -100,8 +101,9 @@ async def _gemini_rank_tasks(tasks: list[Task], local_rows: list[dict], context:
         "days of cover, units on hand, staffing coverage, footfall, complaint severity, delivery status, "
         "audit score, alert severity, or deadline. Do not write vague reasons and do not invent evidence. "
         "Scores must be numbers from 0 to 100. Higher score means the task should appear earlier. "
-        "Consider stock-out risk, manpower coverage, complaints, alerts, delayed deliveries, audits, "
-        "manual issues, current date/time, and festival context.\n\n"
+        "Consider stock-out risk, manpower coverage, today's compact attendance summary, complaints, "
+        "alerts, delayed deliveries, audits, manual issues, current date/time, and festival context. "
+        "Attendance context is summarized; do not ask for full employee attendance rows.\n\n"
         f"Operational context JSON: {json.dumps(context, default=str)}\n"
         f"Candidate task JSON: {json.dumps(task_payload, default=str)}"
     )
@@ -184,6 +186,8 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
         select(StoreAuditReport).where(StoreAuditReport.outlet_id == outlet_id)
         .order_by(StoreAuditReport.audit_date.desc()).limit(1)
     )).scalars().all()
+    today_attendance = await attendance_summary(db, outlet_id, today)
+    peak_prediction = await predict_peak_context(db, outlet_id, today)
 
     risky_items = []
     for item in inventory:
@@ -194,7 +198,13 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
     min_days_cover = min((days for _, days in risky_items if days is not None), default=None)
     max_stock_revenue = max((item.avg_daily_sales * 3 * 250 for item, _ in risky_items), default=0)
     lowest_coverage = min((r.present_staff / r.required_staff for r in roster if r.required_staff), default=1)
-    max_footfall = max((r.peak_hour_footfall_forecast for r in roster), default=0)
+    max_footfall = max(
+        max((r.peak_hour_footfall_forecast for r in roster), default=0),
+        int(peak_prediction["predicted_daily_footfall"] * peak_prediction["peak_demand_share"]),
+    )
+    unavailable_staff = today_attendance["unavailable_staff"]
+    late_staff = today_attendance["late"]
+    attendance_pct = today_attendance["attendance_pct"] if today_attendance["attendance_pct"] is not None else 100.0
     max_complaint_severity = max((c.severity for c in complaints), default=1)
     critical_alert_count = sum(1 for a in alerts if a.severity == AlertSeverity.CRITICAL)
     delayed_delivery_count = sum(1 for d in deliveries if d.status == DeliveryStatus.DELAYED)
@@ -210,6 +220,11 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
         "pending_tasks": len(tasks),
         "overdue_tasks": sum(1 for task in tasks if task.due_at and task.due_at < now),
         "peak_hour_footfall": max_footfall,
+        "predicted_peak_window": peak_prediction["peak_window"],
+        "predicted_daily_footfall": peak_prediction["predicted_daily_footfall"],
+        "attendance_pct": attendance_pct,
+        "attendance_unavailable_staff": unavailable_staff,
+        "attendance_late_staff": late_staff,
         "active_festival_in_7_days": bool(calendar.next_festival),
     }
     gemini_context = {
@@ -227,16 +242,25 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
             }
             for item, days in risky_items[:8]
         ],
-        "roster": [
-            {
-                "shift": row.shift,
-                "required_staff": row.required_staff,
-                "present_staff": row.present_staff,
-                "coverage_pct": round(100 * row.present_staff / row.required_staff, 1) if row.required_staff else 100,
-                "peak_hour_footfall_forecast": row.peak_hour_footfall_forecast,
-            }
-            for row in roster
-        ],
+        "attendance_summary": {
+            "date": today_attendance["date"],
+            "total_employees": today_attendance["total_employees"],
+            "available_staff": today_attendance["available_staff"],
+            "unavailable_staff": today_attendance["unavailable_staff"],
+            "present": today_attendance["present"],
+            "late": today_attendance["late"],
+            "absent": today_attendance["absent"],
+            "leave": today_attendance["leave"],
+            "half_day": today_attendance["half_day"],
+            "attendance_pct": today_attendance["attendance_pct"],
+            "exceptions": today_attendance["exceptions"],
+        },
+        "peak_prediction": {
+            "peak_window": peak_prediction["peak_window"],
+            "predicted_daily_footfall": peak_prediction["predicted_daily_footfall"],
+            "active_promotions": peak_prediction["active_promotions"],
+            "method": peak_prediction["method"],
+        },
         "open_complaints": [
             {
                 "category": row.category,
@@ -319,12 +343,14 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
                     reason_type = "delivery_delay"
                     reason += f" Its delivery scheduled for {delayed.scheduled_date} is delayed."
         elif task.source == TaskSource.MANPOWER:
-            severity = 5 if lowest_coverage < 0.7 else 4
-            revenue_at_risk = max_footfall * 150 * festival_multiplier
+            severity = 5 if lowest_coverage < 0.7 or unavailable_staff >= 2 else 4
+            revenue_at_risk = (max_footfall * 150 + unavailable_staff * 2500 + late_staff * 1200) * festival_multiplier
             hours_to_deadline = min(hours_to_deadline or 8, 4)
             reason = (
                 f"Workload pressure: lowest staffing coverage is {round(lowest_coverage * 100, 1)}% "
-                f"while forecast peak footfall reaches {max_footfall} customers."
+                f"while predicted peak is {peak_prediction['peak_window']} with {max_footfall} forecast customers. "
+                f"Today's attendance is {attendance_pct}% with {unavailable_staff} unavailable "
+                f"and {late_staff} late."
             )
         elif task.source == TaskSource.COMPLAINT:
             severity = max_complaint_severity

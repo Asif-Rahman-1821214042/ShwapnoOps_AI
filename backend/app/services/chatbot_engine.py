@@ -20,16 +20,18 @@ from app.models import (
     Task, TaskStatus, InventoryItem, ManpowerRoster, Complaint,
     ComplaintStatus, Alert, AlertSeverity, Outlet,
 )
+from app.services.attendance import attendance_summary, predict_peak_context
 from app.services.business_calendar import business_calendar_context
 
 INTENT_KEYWORDS = {
-    "calendar": ["date", "time", "today", "festival", "eid", "puja", "boishakh", "next 7 days"],
+    "attendance": ["attendance", "present", "absent", "late", "leave", "half day", "check-in", "check out", "check-out"],
     "top_tasks": ["priorit", "what should i do", "focus", "today's task", "top task"],
     "stock_risk": ["stock", "inventory", "out of stock", "sku", "reorder"],
-    "manpower": ["staff", "manpower", "roster", "shift", "understaffed", "attendance"],
+    "manpower": ["staff", "manpower", "roster", "understaffed", "peak hour", "peak", "organize manpower"],
     "complaints": ["complaint", "customer issue", "feedback"],
     "alerts": ["alert", "warning", "critical", "risk"],
     "scorecard": ["score", "performance", "kpi", "how am i doing", "productivity"],
+    "calendar": ["date", "time", "today", "festival", "eid", "puja", "boishakh", "next 7 days"],
 }
 
 
@@ -86,11 +88,44 @@ def _fallback_reply(intent: str, data: dict) -> str:
         return f"{len(risky)} SKU(s) need attention:\n" + "\n".join(lines)
 
     if intent == "manpower":
-        shifts = data.get("shifts", [])
-        if not shifts:
-            return "No roster data logged for today yet."
-        lines = [f"- {s['shift']}: {s['present_staff']}/{s['required_staff']} present" for s in shifts]
-        return "Today's manpower coverage:\n" + "\n".join(lines)
+        peak = data.get("peak_prediction") or {}
+        staffing = data.get("staffing") or {}
+        if not staffing:
+            return "No employee attendance is logged for today yet."
+        lines = [
+            f"Predicted peak window: {peak.get('peak_window', 'unknown')} "
+            f"({peak.get('predicted_daily_footfall', 0)} daily footfall forecast)."
+        ]
+        lines.append(
+            f"Available today: {staffing.get('available_staff', 0)}. "
+            f"Recommended on customer-facing work during peak: {staffing.get('recommended_on_floor_staff', 0)}."
+        )
+        if data.get("recommendation"):
+            lines.append(data["recommendation"])
+        return "Today's manpower plan:\n" + "\n".join(lines)
+
+    if intent == "attendance":
+        summary = data.get("attendance_summary", {})
+        if not summary or not summary.get("total_employees"):
+            return "No employee attendance is logged for today yet."
+        lines = [
+            f"Today's attendance: {summary.get('available_staff')}/{summary.get('total_employees')} available ({summary.get('attendance_pct')}%).",
+            (
+                f"Present {summary.get('present')}, late {summary.get('late')}, "
+                f"absent {summary.get('absent')}, leave {summary.get('leave')}, "
+                f"half day {summary.get('half_day')}."
+            ),
+        ]
+        exceptions = summary.get("exceptions") or []
+        if exceptions:
+            lines.append(
+                "Exceptions: "
+                + "; ".join(
+                    f"{row['name']} ({row['status']})"
+                    for row in exceptions[:5]
+                )
+            )
+        return "\n".join(lines)
 
     if intent == "complaints":
         return f"You have {data.get('open_complaints', 0)} open customer complaint(s) awaiting resolution."
@@ -197,18 +232,39 @@ async def handle_message(db: AsyncSession, outlet_id: int, message: str) -> tupl
         rosters = (await db.execute(
             select(ManpowerRoster).where(ManpowerRoster.outlet_id == outlet_id, ManpowerRoster.date == today)
         )).scalars().all()
-        data = {"business_calendar": calendar, "shifts": [
-            {
-                "shift": r.shift,
-                "required_staff": r.required_staff,
-                "present_staff": r.present_staff,
-                "coverage_pct": round(100 * r.present_staff / r.required_staff, 1) if r.required_staff else 100,
-                "peak_hour_footfall_forecast": r.peak_hour_footfall_forecast,
-            }
-            for r in rosters
-        ]}
+        attendance = await attendance_summary(db, outlet_id, today)
+        peak = await predict_peak_context(db, outlet_id, today)
+        predicted_daily_footfall = peak["predicted_daily_footfall"] or max((r.peak_hour_footfall_forecast for r in rosters), default=650)
+        predicted_peak_footfall = int(round(predicted_daily_footfall * peak["peak_demand_share"]))
+        capacity_per_staff = 65
+        recommended_staff = max(1, -(-predicted_peak_footfall // capacity_per_staff))
+        available_staff = attendance["available_staff"]
+        staff_gap = max(0, recommended_staff - available_staff)
+        staffing = {
+            "available_staff": available_staff,
+            "recommended_on_floor_staff": recommended_staff,
+            "staff_gap": staff_gap,
+            "predicted_peak_footfall": predicted_peak_footfall,
+            "footfall_per_available_staff": round(predicted_peak_footfall / available_staff, 1) if available_staff else None,
+        }
+        recommendation = (
+            f"Arrange {staff_gap} additional available or cross-trained employee(s) for the peak window."
+            if staff_gap else
+            f"Keep at least {recommended_staff} available employees on customer-facing work during the peak window."
+        )
+        data = {"business_calendar": calendar, "staffing": staffing, "peak_prediction": {
+            "peak_window": peak["peak_window"],
+            "predicted_daily_footfall": predicted_daily_footfall,
+            "active_promotions": peak["active_promotions"],
+        }, "attendance_summary": attendance, "recommendation": recommendation}
         reply = await _gemini_reply(message, intent, data) or _fallback_reply(intent, data)
         return reply, intent, data
+
+    if intent == "attendance":
+        today = calendar["local_date"]
+        summary = await attendance_summary(db, outlet_id, today)
+        data = {"business_calendar": calendar, "attendance_summary": summary}
+        return _fallback_reply(intent, data), intent, data
 
     if intent == "complaints":
         count = (await db.execute(

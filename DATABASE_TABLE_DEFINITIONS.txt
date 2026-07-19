@@ -20,6 +20,10 @@ Main fields:
 - code: Short outlet code, for example "DHM27".
 - region: City or region, for example Dhaka or Chattogram.
 - manager_name: Name of the outlet manager.
+- address: Outlet street/location address.
+- contact_phone and contact_email: Outlet contact information.
+- opening_date: Outlet opening date, when known.
+- is_active: Whether the outlet is currently operating.
 
 Used for:
 Almost every other table links to this table using outlet_id. It tells the app
@@ -66,7 +70,41 @@ Sales trend charts, revenue today, customer footfall analysis, and seasonal
 demand understanding.
 
 
-4. inventory_items
+4. POS orders, payments, and terminals
+---------------------------------------
+What they store:
+Outlet-level POS orders, their products, payment records, terminals, and customers.
+
+Main relationships:
+- pos_transactions.outlet_id: Foreign key to outlets.id. A receipt belongs to
+  exactly one outlet.
+- pos_transactions.terminal_id: Foreign key to pos_terminals.id.
+- pos_transactions.customer_id: Foreign key to customers.id.
+- pos_transactions.cashier_employee_id: Foreign key to employees.id.
+- pos_transaction_lines.transaction_id: Foreign key to pos_transactions.id
+  with cascade delete. A receipt can contain many product lines.
+- pos_payments.transaction_id: Foreign key to pos_transactions.id with cascade delete.
+- pos_payments.payment_method_id: Foreign key to payment_methods.id.
+- pos_transaction_lines.category_id: Optional foreign key to
+  product_categories.id.
+
+Key fields:
+- receipt_no: Globally unique POS receipt reference.
+- transaction_at, cashier_name, payment_method, subtotal, discount_amount,
+  total_amount, item_count, and status: Receipt header values.
+- sku, product_name, category, quantity, unit_price, discount_amount, and
+  line_total: Product line values.
+- payment_methods: Database master for Cash, bKash, Nagad, Rocket, Card, Bank transfer, and Other.
+- pos_payments.transaction_reference: Unique payment transaction ID, preventing duplicate MFS references.
+
+Used for:
+POS Summary Dashboard totals, payment-method summaries, terminal/cashier filters,
+MFS order searching, pagination, details, and CSV export.
+
+
+-------------------
+5. inventory_items
+-------------------
 ------------------
 What it stores:
 Current stock position for each SKU in each outlet.
@@ -89,7 +127,7 @@ Stock-out risk table, inventory health, task prioritization, and alert scanning.
 The backend calculates days of cover from on_hand_units / avg_daily_sales.
 
 
-5. inventory_movements
+6. inventory_movements
 ----------------------
 What it stores:
 Stock movement history for each SKU, like a stock ledger.
@@ -112,7 +150,7 @@ Used for:
 Inventory Movement Ledger section and stock history investigation.
 
 
-6. stock_out_events
+7. stock_out_events
 -------------------
 What it stores:
 History of products that went out of stock.
@@ -132,7 +170,7 @@ Used for:
 Stock-Out History section, root-cause analysis, and AI task prioritization.
 
 
-6. manpower_roster
+8. manpower_roster
 ------------------
 What it stores:
 Daily staff roster and attendance by shift.
@@ -150,7 +188,58 @@ Used for:
 Shift-wise manpower view, low manpower alerts, and AI queue prioritization.
 
 
-7. complaints
+9. employees
+------------
+What it stores:
+Employee master data and the employee's current outlet assignment.
+
+Main fields:
+- id: Unique employee ID.
+- outlet_id: Current assigned outlet. This is a foreign key to outlets.id.
+- employee_code: Unique employee code used in operations reports.
+- name: Employee display name.
+- email: Unique employee email address.
+- phone: Employee phone number.
+- designation: Job title, such as Cashier, Floor Associate, or Security.
+- hire_date: Employee hire date.
+- is_active: Whether the employee is currently active.
+- created_at and updated_at: Audit timestamps.
+
+Used for:
+Keeping employee details in one place. Attendance records reference this table
+by employee_id instead of duplicating employee or outlet data.
+
+
+10. employee_attendance
+----------------------
+What it stores:
+Employee-level daily attendance records.
+
+Main fields:
+- id: Unique attendance row ID.
+- employee_id: Which employee this attendance belongs to. This is a foreign key
+  to employees.id with cascade delete for employee removal.
+- attendance_date: The exact attendance date. UI filters by this date, so a
+  Thursday selection only shows Thursday records.
+- check_in_at and check_out_at: Actual punch times. Empty for absent or leave.
+- status: present, late, absent, leave, or half_day.
+- working_hours: Calculated working hours for the day.
+- remarks: Supervisor or sync note.
+- created_at and updated_at: Audit timestamps.
+
+Constraints and indexes:
+- Primary key: id.
+- Foreign key: employee_id references employees.id.
+- Unique constraint: employee_id + attendance_date, preventing duplicate daily
+  attendance for the same employee.
+- Indexes on employee_id, attendance_date, and employee_id + attendance_date.
+
+Used for:
+Outlet-specific employee attendance in the dashboard through the normalized
+outlets -> employees -> employee_attendance relationship.
+
+
+11. complaints
 -------------
 What it stores:
 Customer complaints and feedback records.
@@ -168,7 +257,7 @@ Used for:
 Customer Issue Desk, complaint spike alerts, task creation, and Gemini context.
 
 
-8. promotion_campaigns
+12. promotion_campaigns
 ----------------------
 What it stores:
 Promotion and campaign calendar records.
@@ -191,7 +280,7 @@ Promotion & Campaign Calendar section and AI prioritization during campaign
 periods.
 
 
-9. delivery_schedules
+13. delivery_schedules
 ---------------------
 What it stores:
 Upcoming and recent delivery schedules from suppliers or distribution centers.
@@ -214,7 +303,7 @@ Delivery Schedule section, stock planning, delayed delivery signals, and Gemini
 task prioritization.
 
 
-10. seasonal_events
+14. seasonal_events
 -------------------
 What it stores:
 Seasonal/festival event calendar, such as Eid, Puja, Pahela Boishakh, etc.
@@ -234,7 +323,7 @@ Seasonal Sales Trends section, next festival calculation, calendar context for
 AI, and festival-aware task prioritization.
 
 
-11. store_audit_reports
+15. store_audit_reports
 -----------------------
 What it stores:
 Store audit results for compliance and operations checks.
@@ -255,7 +344,7 @@ Used for:
 Store Audit Reports section and AI prioritization when audit issues need action.
 
 
-12. manual_issues
+16. manual_issues
 -----------------
 What it stores:
 Issues manually reported by Outlet Managers.
@@ -277,7 +366,7 @@ Manual Manager Issues section, manager issue tracking, and Gemini task
 prioritization.
 
 
-13. tasks
+17. tasks
 ---------
 What it stores:
 Action items for outlet managers.
@@ -299,7 +388,7 @@ AI-Prioritized Task Queue. Gemini ranks these tasks using operational context,
 and the backend saves the new priority_score.
 
 
-14. alerts
+18. alerts
 ----------
 What it stores:
 Operational alerts generated by seed data or the alert engine.
@@ -319,7 +408,7 @@ Active Alerts, Live Ops Receipt, scorecard critical alert count, and Gemini
 task prioritization.
 
 
-15. demand_forecasts
+19. demand_forecasts
 --------------------
 What it stores:
 Forecasted demand for each SKU and date.
@@ -346,7 +435,7 @@ Used for:
 Production Demand Forecast, weather demand planning, and stock-more decisions.
 
 
-16. ai_recommendation_audits
+20. ai_recommendation_audits
 ----------------------------
 What it stores:
 Every AI recommendation generated by the system, including approval and
@@ -368,7 +457,7 @@ Approval workflow, escalation workflow, historical audit trail, and management
 review of AI decisions.
 
 
-17. outlet_sales_targets
+21. outlet_sales_targets
 ------------------------
 What it stores:
 Monthly sales targets for each outlet, automatically divided into weekly and
@@ -428,8 +517,10 @@ Sales & Footfall:
 Stock-Out Risk by SKU:
 - Uses inventory_items.
 
-Shift-wise Manpower:
-- Uses manpower_roster.
+Peak Manpower Coverage:
+- Uses employee_attendance and sales_records. It compares outlet-wide daily
+  availability with the predicted peak-period customer demand; employees are
+  not assigned to shifts in this analysis.
 
 Customer Issue Desk:
 - Uses complaints.
