@@ -627,6 +627,7 @@ class AiRecommendationAudit(Base):
     summary: Mapped[str] = mapped_column(Text)
     actions: Mapped[list] = mapped_column(JSON, default=list)
     context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    data_fingerprint: Mapped[str] = mapped_column(String(64), default="", index=True)
     status: Mapped[AiRecommendationStatus] = mapped_column(
         Enum(AiRecommendationStatus),
         default=AiRecommendationStatus.PENDING_APPROVAL,

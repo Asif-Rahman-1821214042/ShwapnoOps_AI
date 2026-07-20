@@ -57,7 +57,7 @@ const views = {
   inventory:{title:'Outlet Inventory',path:id=>`/api/inventory?outlet_id=${id}`,columns:[
     ['SKU',r=>r.sku],['Category',r=>r.category],['On hand',r=>r.on_hand_units],['Reorder point',r=>r.reorder_point],['Days cover',r=>r.days_of_cover??'—'],['Risk',r=>pill(r.risk_level)]
   ]},
-  forecasts:{title:'Gemini Category Forecasts',path:id=>`/api/forecasts/demand?outlet_id=${id}&limit=100`,columns:[
+  forecasts:{title:'Model Category Forecasts',path:id=>`/api/forecasts/demand?outlet_id=${id}&limit=100`,columns:[
     ['Category',r=>r.category],['Date',r=>shortDate(r.forecast_date)],['Predicted units',r=>r.predicted_units],['Recommended',r=>r.recommended_stock_units],['Gap',r=>r.projected_gap_units],['Risk',r=>pill(r.risk_level)],['Model',r=>r.model_name]
   ]},
   alerts:{title:'Active Alerts',path:id=>`/api/alerts?outlet_id=${id}`,columns:[

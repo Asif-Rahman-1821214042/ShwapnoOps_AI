@@ -1,7 +1,8 @@
 import datetime as dt
 import asyncio
+import hashlib
 import json
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -10,11 +11,14 @@ from app.models import (
     Alert, Complaint, ComplaintStatus, DeliverySchedule, InventoryItem,
     ManpowerRoster, ManualIssue, Outlet, PromotionCampaign, SeasonalEvent,
     StockOutEvent, StoreAuditReport, Task, TaskStatus,
+    Employee, EmployeeAttendance, OutletSalesTarget, PaymentMethod, PosPayment,
+    PosTransaction, TransactionCategory,
 )
 from app.schemas import AiActionItem, AiActionResponse
 from app.services.analytics import outlet_scorecard
 from app.services.business_calendar import business_calendar_context
 from app.services.weather_context import weather_demand_context
+from app.services.attendance import attendance_summary
 
 
 PURPOSES = {
@@ -30,6 +34,10 @@ PURPOSES = {
     "root_cause_analysis",
     "regional_summary",
     "weather_demand",
+    "payment_completion",
+    "stock_availability",
+    "employee_attendance",
+    "target_achievement",
 }
 
 
@@ -39,6 +47,19 @@ def _enum_value(value) -> str:
 
 def _json_safe(value):
     return json.loads(json.dumps(value, default=str))
+
+
+def _operational_fingerprint(context: dict) -> str:
+    """Hash only data that should invalidate a saved outlet analysis."""
+    inputs = {
+        key: context.get(key)
+        for key in (
+            "outlet", "operational_metrics", "pending_tasks", "risky_inventory",
+            "today_roster", "recent_complaints", "active_alerts", "delivery_schedule",
+            "promotion_calendar", "stock_out_history", "manual_issues",
+        )
+    }
+    return hashlib.sha256(json.dumps(_json_safe(inputs), sort_keys=True).encode()).hexdigest()
 
 
 async def _build_context(db: AsyncSession, outlet_id: int) -> dict:
@@ -115,6 +136,46 @@ async def _build_context(db: AsyncSession, outlet_id: int) -> dict:
             })
 
     scorecard = await outlet_scorecard(db, outlet)
+    attendance = await attendance_summary(db, outlet_id, today)
+    payment_rows = (await db.execute(
+        select(
+            PosPayment.transaction_category,
+            func.count(PosPayment.id),
+            func.coalesce(func.sum(PosPayment.amount), 0.0),
+        ).join(PosTransaction).where(
+            PosTransaction.outlet_id == outlet_id,
+            func.date(PosTransaction.transaction_at) == today,
+            PosTransaction.order_status == "completed",
+            PosPayment.status.in_(["paid", "partial"]),
+        ).group_by(PosPayment.transaction_category)
+    )).all()
+    payment_categories = {
+        (category.value if hasattr(category, "value") else str(category)): {"orders": count, "amount": round(float(amount), 2)}
+        for category, count, amount in payment_rows
+    }
+    sales_row = (await db.execute(
+        select(
+            func.coalesce(func.sum(PosTransaction.total_amount), 0.0),
+            func.coalesce(func.count(PosTransaction.id), 0),
+            func.coalesce(func.sum(PosTransaction.paid_amount), 0.0),
+        ).where(
+            PosTransaction.outlet_id == outlet_id,
+            func.date(PosTransaction.transaction_at) == today,
+            PosTransaction.order_status == "completed",
+        )
+    )).one()
+    target = (await db.execute(
+        select(OutletSalesTarget.daily_target).where(
+            OutletSalesTarget.outlet_id == outlet_id,
+            OutletSalesTarget.year == today.year,
+            OutletSalesTarget.month == today.month,
+        )
+    )).scalar_one_or_none() or 0.0
+    actual_sales, completed_orders, paid_sales = map(float, sales_row)
+    achievement_pct = round((actual_sales / float(target)) * 100, 1) if target else 0.0
+    now = dt.datetime.now()
+    expected_progress_pct = round(min(100, max(0, ((now.hour * 60 + now.minute) / (24 * 60)) * 100)), 1)
+    remaining_target = max(0.0, float(target) - actual_sales)
     regional_scorecards = []
     for regional_outlet in all_outlets:
         card = await outlet_scorecard(db, regional_outlet)
@@ -138,6 +199,21 @@ async def _build_context(db: AsyncSession, outlet_id: int) -> dict:
             "manager_name": outlet.manager_name,
         },
         "scorecard": scorecard.model_dump(),
+        "operational_metrics": {
+            "daily_sales_target": round(float(target), 2),
+            "actual_daily_sales": round(actual_sales, 2),
+            "paid_sales": round(paid_sales, 2),
+            "completed_orders": int(completed_orders),
+            "achievement_pct": achievement_pct,
+            "remaining_target": round(remaining_target, 2),
+            "expected_progress_pct": expected_progress_pct,
+            "progress_variance_pct": round(achievement_pct - expected_progress_pct, 1),
+            "payment_categories": payment_categories,
+            "payment_completion_pct": round((paid_sales / actual_sales) * 100, 1) if actual_sales else 0.0,
+            "attendance": attendance,
+            "stock_availability_pct": scorecard.stock_health_pct,
+            "critical_alerts": scorecard.critical_alerts,
+        },
         "business_calendar": calendar.model_dump(),
         "pending_tasks": [
             {
@@ -269,6 +345,43 @@ def _fallback_actions(purpose: str, context: dict) -> tuple[str, list[AiActionIt
     stock_outs = context["stock_out_history"]
     manual_issues = context["manual_issues"]
     weather = context.get("weather_forecast") or {}
+    metrics = context.get("operational_metrics") or {}
+
+    if purpose == "target_achievement":
+        achievement = metrics.get("achievement_pct", 0)
+        expected = metrics.get("expected_progress_pct", 0)
+        remaining = metrics.get("remaining_target", 0)
+        actions = []
+        if remaining > 0:
+            actions.append(AiActionItem(
+                title="Close today's sales target gap",
+                rationale=f"Achievement is {achievement}% against an expected {expected}%; BDT {remaining:,.0f} remains.",
+                urgency="high" if achievement < expected else "medium", due_in_hours=2, source="sales_target",
+            ))
+        actions.extend(AiActionItem(
+            title=f"Resolve {item['sku']} availability risk",
+            rationale=f"Only {item['days_of_cover']} days of cover remain; protect sales in this category.",
+            urgency="high" if (item["days_of_cover"] or 99) <= 1 else "medium", due_in_hours=4, source="inventory",
+        ) for item in stock[:3])
+        if metrics.get("attendance", {}).get("unavailable_staff", 0):
+            actions.append(AiActionItem(
+                title="Protect peak-hour floor coverage",
+                rationale=f"{metrics['attendance']['unavailable_staff']} employee(s) are unavailable today; use the named manpower assignments.",
+                urgency="high", due_in_hours=1, source="attendance",
+            ))
+        state = "behind" if achievement < expected else "ahead of"
+        return f"Target achievement is {achievement}% and the outlet is {state} expected progress ({expected}%).", actions
+
+    if purpose == "payment_completion":
+        rate = metrics.get("payment_completion_pct", 0)
+        return f"Payment completion is {rate}%.", [AiActionItem(title="Resolve unpaid or partial payments", rationale="Review incomplete payment records before shift close.", urgency="high" if rate < 95 else "medium", due_in_hours=2, source="payments")]
+
+    if purpose == "stock_availability":
+        return _fallback_actions("stock_replenishment", context)
+
+    if purpose == "employee_attendance":
+        unavailable = metrics.get("attendance", {}).get("unavailable_staff", 0)
+        return f"{unavailable} employee(s) are unavailable today.", [AiActionItem(title="Apply named peak assignments", rationale="Use attendance-based assignments to protect checkout and floor coverage.", urgency="high" if unavailable else "medium", due_in_hours=1, source="attendance")]
 
     if purpose == "stock_replenishment":
         actions = [
@@ -558,6 +671,7 @@ async def generate_action_plan(
     outlet_id: int,
     purpose: str,
     instruction: str | None = None,
+    force_regenerate: bool = False,
 ) -> AiActionResponse:
     normalized_purpose = purpose.strip().lower()
     if normalized_purpose not in PURPOSES:
@@ -570,6 +684,23 @@ async def generate_action_plan(
         local_date = raw_local_date if isinstance(raw_local_date, dt.date) else dt.date.fromisoformat(raw_local_date)
         context["weather_forecast"] = await weather_demand_context(local_date)
     fallback_summary, actions = _fallback_actions(normalized_purpose, context)
+    fingerprint = _operational_fingerprint(context)
+    if not force_regenerate:
+        cached = (await db.execute(
+            select(AiRecommendationAudit).where(
+                AiRecommendationAudit.outlet_id == outlet_id,
+                AiRecommendationAudit.purpose == normalized_purpose,
+                AiRecommendationAudit.data_fingerprint == fingerprint,
+            ).order_by(AiRecommendationAudit.created_at.desc()).limit(1)
+        )).scalar_one_or_none()
+        if cached:
+            return AiActionResponse(
+                recommendation_id=cached.id, outlet_id=outlet_id, purpose=normalized_purpose,
+                generated_by=f"saved_{cached.generated_by}", model=cached.model,
+                approval_status=cached.status, summary=cached.summary,
+                actions=[AiActionItem(**action) for action in cached.actions], context=cached.context_snapshot,
+                cached=True, generated_at=cached.created_at,
+            )
     gemini_summary = await _gemini_summary(normalized_purpose, instruction, context, actions)
 
     response_context = {
@@ -577,6 +708,7 @@ async def generate_action_plan(
         "outlet": context["outlet"],
         "scorecard": context["scorecard"],
         "business_calendar": context["business_calendar"],
+        "operational_metrics": context["operational_metrics"],
         "weather_forecast": context.get("weather_forecast"),
     }
     audit = AiRecommendationAudit(
@@ -587,6 +719,7 @@ async def generate_action_plan(
         summary=gemini_summary or fallback_summary,
         actions=_json_safe([action.model_dump() for action in actions]),
         context_snapshot=_json_safe(response_context),
+        data_fingerprint=fingerprint,
         status=AiRecommendationStatus.PENDING_APPROVAL,
     )
     db.add(audit)
@@ -603,4 +736,6 @@ async def generate_action_plan(
         summary=gemini_summary or fallback_summary,
         actions=actions,
         context=response_context,
+        cached=False,
+        generated_at=audit.created_at,
     )

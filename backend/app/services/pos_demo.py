@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
-    Customer, Employee, Outlet, PaymentMethod, PosPayment, PosPaymentMethod,
+    AttendanceStatus, Customer, Employee, EmployeeAttendance, Outlet, PaymentMethod, PosPayment, PosPaymentMethod,
     PosTerminal, PosTransaction, PosTransactionLine, ProductCategory,
 )
 from app.services.payment_classification import classify_payment_method
@@ -155,6 +155,90 @@ async def ensure_pos_demo_data(db: AsyncSession) -> int:
                 status=order.payment_status,
                 transaction_category=classify_payment_method(method.code, order.terminal_id is not None),
                 paid_at=order.transaction_at,
+            ))
+
+    # Keep local demo records useful after midnight without duplicating a day.
+    today_count = (await db.execute(
+        select(func.count(PosTransaction.id)).where(func.date(PosTransaction.transaction_at) == today)
+    )).scalar_one()
+    if not today_count and orders:
+        source_orders = [order for order in orders if order.transaction_at.date() < today][:14]
+        for sequence, source in enumerate(source_orders, start=1):
+            factor = 0.92 + (sequence % 5) * 0.04
+            occurred_at = dt.datetime.combine(today, dt.time(9 + (sequence % 12), (sequence * 7) % 60))
+            receipt = PosTransaction(
+                outlet_id=source.outlet_id,
+                receipt_no=f"POS-TODAY-{source.outlet_id}-{today:%Y%m%d}-{sequence:04d}",
+                transaction_at=occurred_at, cashier_name=source.cashier_name,
+                payment_method=source.payment_method, terminal_id=source.terminal_id,
+                cashier_employee_id=source.cashier_employee_id,
+                subtotal=round(source.subtotal * factor, 2), discount_amount=round(source.discount_amount * factor, 2),
+                tax_amount=round(source.tax_amount * factor, 2), total_amount=round(source.total_amount * factor, 2),
+                item_count=source.item_count, order_status="completed" if sequence % 9 else "cancelled",
+                payment_status="paid" if sequence % 7 else "partial",
+                paid_amount=round(source.total_amount * factor * (0.65 if sequence % 7 == 0 else 1), 2),
+            )
+            customer = Customer(name=customer_names[sequence % len(customer_names)], phone=f"+8801700{today:%m%d}{sequence:04d}")
+            db.add_all([receipt, customer])
+            await db.flush()
+            receipt.customer_id = customer.id
+            source_lines = (await db.execute(select(PosTransactionLine).where(PosTransactionLine.transaction_id == source.id))).scalars().all()
+            for line in source_lines:
+                db.add(PosTransactionLine(
+                    transaction_id=receipt.id, sku=line.sku, product_name=line.product_name, category=line.category,
+                    category_id=line.category_id, quantity=line.quantity, unit_price=round(line.unit_price * factor, 2),
+                    discount_amount=round(line.discount_amount * factor, 2), line_total=round(line.line_total * factor, 2),
+                ))
+            method_code = payment_codes[sequence % len(payment_codes)]
+            method = methods[method_code]
+            db.add(PosPayment(
+                transaction_id=receipt.id, payment_method_id=method.id,
+                transaction_reference=f"{method_code.upper()}-{today:%Y%m%d}-{receipt.id:06d}" if method.is_mobile_financial_service else None,
+                amount=receipt.paid_amount, status=receipt.payment_status, paid_at=occurred_at,
+                transaction_category=classify_payment_method(method.code, receipt.terminal_id is not None),
+            ))
+
+    # Attendance is independently seeded per outlet for the current business day.
+    for outlet in outlets:
+        attendance_count = (await db.execute(
+            select(func.count(EmployeeAttendance.id)).join(Employee).where(
+                Employee.outlet_id == outlet.id,
+                EmployeeAttendance.attendance_date == today,
+            )
+        )).scalar_one()
+        if attendance_count:
+            continue
+        employees = (await db.execute(
+            select(Employee).where(Employee.outlet_id == outlet.id, Employee.is_active.is_(True)).order_by(Employee.id)
+        )).scalars().all()
+        for index, employee in enumerate(employees):
+            status = (
+                AttendanceStatus.ABSENT if index == 4 else
+                AttendanceStatus.LEAVE if index == 7 else
+                AttendanceStatus.HALF_DAY if index == 8 else
+                AttendanceStatus.LATE if index == 2 else
+                AttendanceStatus.PRESENT
+            )
+            check_in = check_out = None
+            remarks = "Biometric punch synced"
+            working_hours = 0.0
+            if status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
+                check_in = dt.datetime.combine(today, dt.time(9, 18 if status == AttendanceStatus.LATE else 2))
+                check_out = dt.datetime.combine(today, dt.time(18, 5))
+                working_hours = round((check_out - check_in).total_seconds() / 3600, 2)
+                remarks = "Late arrival logged by supervisor" if status == AttendanceStatus.LATE else remarks
+            elif status is AttendanceStatus.HALF_DAY:
+                check_in = dt.datetime.combine(today, dt.time(9, 5))
+                check_out = dt.datetime.combine(today, dt.time(13, 5))
+                working_hours, remarks = 4.0, "Approved half-day attendance"
+            elif status is AttendanceStatus.ABSENT:
+                remarks = "No punch recorded"
+            else:
+                remarks = "Approved leave"
+            db.add(EmployeeAttendance(
+                employee_id=employee.id, attendance_date=today, status=status,
+                check_in_at=check_in, check_out_at=check_out,
+                working_hours=working_hours, remarks=remarks,
             ))
 
     await db.commit()

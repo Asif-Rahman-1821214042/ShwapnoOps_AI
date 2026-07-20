@@ -10,15 +10,18 @@ This module keeps all answers grounded in outlet data. Gemini GenAI is used as
 the response composer when GEMINI_API_KEY is configured; otherwise the local
 deterministic composer keeps the demo fully runnable without external services.
 """
+import asyncio
 import datetime as dt
+import hashlib
 import json
-from sqlalchemy import select, func
+from sqlalchemy import case, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import (
     Task, TaskStatus, InventoryItem, ManpowerRoster, Complaint,
-    ComplaintStatus, Alert, AlertSeverity, Outlet,
+    ComplaintStatus, Alert, AlertSeverity, Outlet, PaymentMethod,
+    PosPayment, PosTransaction,
 )
 from app.services.attendance import attendance_summary, predict_peak_context
 from app.services.business_calendar import business_calendar_context
@@ -32,11 +35,21 @@ INTENT_KEYWORDS = {
     "alerts": ["alert", "warning", "critical", "risk"],
     "scorecard": ["score", "performance", "kpi", "how am i doing", "productivity"],
     "calendar": ["date", "time", "today", "festival", "eid", "puja", "boishakh", "next 7 days"],
+    "payments": [
+        "pos", "card", "credit", "debit", "terminal", "e-payment", "e payment", "epayment",
+        "digital payment", "bkash", "nagad", "rocket", "bank transfer", "cash payment",
+        "payment method", "payment completion", "unpaid", "partial payment", "transaction",
+    ],
 }
+
+CHAT_MODEL_CACHE_TTL_SECONDS = 300
+_chat_model_cache: dict[str, tuple[dt.datetime, str]] = {}
 
 
 def classify_intent(message: str) -> str:
     m = message.lower()
+    if any(keyword in m for keyword in INTENT_KEYWORDS["payments"]):
+        return "payments"
     for intent, keywords in INTENT_KEYWORDS.items():
         if any(k in m for k in keywords):
             return intent
@@ -45,6 +58,21 @@ def classify_intent(message: str) -> str:
 
 def _as_text(value) -> str:
     return value.value if hasattr(value, "value") else str(value)
+
+
+def _model_cache_key(message: str, intent: str, data: dict) -> str:
+    """Exclude clock-only fields so unchanged questions can reuse a recent answer."""
+    payload = json.loads(json.dumps(data, default=str))
+    calendar = payload.get("business_calendar")
+    if isinstance(calendar, dict):
+        calendar.pop("local_time", None)
+        calendar.pop("local_datetime", None)
+    source = json.dumps(
+        {"message": message.strip().lower(), "intent": intent, "data": payload},
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
 def _fallback_reply(intent: str, data: dict) -> str:
@@ -144,9 +172,40 @@ def _fallback_reply(intent: str, data: dict) -> str:
             f"{data.get('open_complaints')} open complaint(s)."
         )
 
+    if intent == "payments":
+        payments = data.get("payments", {})
+        today = payments.get("today", {})
+        categories = payments.get("categories", {})
+        if not today.get("orders"):
+            return "No completed payment transactions have been recorded for this outlet today."
+
+        lines = [
+            f"Today: {today['orders']} completed order(s), BDT {today['sales']:,.2f} sales, "
+            f"and {today['payment_completion_pct']}% payment completion.",
+        ]
+        for category, label in (
+            ("pos_transaction", "Card POS"),
+            ("e_payment", "E-payment"),
+            ("normal_transaction", "Cash"),
+        ):
+            entry = categories.get(category)
+            if not entry:
+                continue
+            methods = ", ".join(
+                f"{method['name']} BDT {method['amount']:,.2f}"
+                for method in entry["methods"]
+            )
+            lines.append(
+                f"{label}: {entry['orders']} payment(s), BDT {entry['amount']:,.2f}"
+                + (f" ({methods})." if methods else ".")
+            )
+        if today.get("unpaid_or_partial_orders"):
+            lines.append(f"{today['unpaid_or_partial_orders']} order(s) still need payment follow-up.")
+        return "\n".join(lines)
+
     return (
         "I can help with today's priorities, stock risk, manpower coverage, complaints, "
-        "active alerts, or your outlet's performance scorecard."
+        "active alerts, payment operations, or your outlet's performance scorecard."
     )
 
 
@@ -159,10 +218,17 @@ async def _gemini_reply(message: str, intent: str, data: dict) -> str | None:
     except Exception:
         return None
 
+    cache_key = _model_cache_key(message, intent, data)
+    now = dt.datetime.utcnow()
+    cached = _chat_model_cache.get(cache_key)
+    if cached and (now - cached[0]).total_seconds() < CHAT_MODEL_CACHE_TTL_SECONDS:
+        return cached[1]
+
     prompt = (
         "You are ShwapnoOps AI, a concise retail operations copilot for Shwapno outlet managers in Bangladesh. "
         "Use only the JSON context below. Do not invent SKUs, alerts, staff counts, or financial values. "
-        "Return 2-5 practical sentences or a short numbered list. Keep currency as BDT when relevant.\n\n"
+        "Answer the user's direct question in no more than 120 words. Do not repeat every metric unless asked. "
+        "Keep currency as BDT when relevant.\n\n"
         f"User question: {message}\n"
         f"Classified intent: {intent}\n"
         f"Outlet context JSON: {json.dumps(data, default=str)}"
@@ -170,11 +236,17 @@ async def _gemini_reply(message: str, intent: str, data: dict) -> str | None:
 
     try:
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        response = await client.aio.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=prompt,
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=prompt,
+            ),
+            timeout=settings.GEMINI_TIMEOUT_SECONDS,
         )
-        return response.text.strip() if response.text else None
+        reply = response.text.strip() if response.text else None
+        if reply:
+            _chat_model_cache[cache_key] = (now, reply)
+        return reply
     except Exception:
         return None
 
@@ -294,6 +366,83 @@ async def handle_message(db: AsyncSession, outlet_id: int, message: str) -> tupl
         card = await outlet_scorecard(db, outlet)
         data = card.model_dump()
         data["business_calendar"] = calendar
+        reply = await _gemini_reply(message, intent, data) or _fallback_reply(intent, data)
+        return reply, intent, data
+
+    if intent == "payments":
+        today = calendar["local_date"]
+        payment_rows = (await db.execute(
+            select(
+                PosPayment.transaction_category,
+                PaymentMethod.name,
+                func.count(PosPayment.id),
+                func.coalesce(func.sum(PosPayment.amount), 0.0),
+            ).select_from(PosPayment).join(PosTransaction).join(PaymentMethod).where(
+                PosTransaction.outlet_id == outlet_id,
+                func.date(PosTransaction.transaction_at) == today,
+                PosTransaction.order_status == "completed",
+                PosPayment.status.in_(["paid", "partial"]),
+            ).group_by(PosPayment.transaction_category, PaymentMethod.name)
+            .order_by(PosPayment.transaction_category, PaymentMethod.name)
+        )).all()
+        order_count, sales, paid, payment_follow_up = (await db.execute(
+            select(
+                func.count(PosTransaction.id),
+                func.coalesce(func.sum(PosTransaction.total_amount), 0.0),
+                func.coalesce(func.sum(PosTransaction.paid_amount), 0.0),
+                func.coalesce(func.sum(case((PosTransaction.payment_status != "paid", 1), else_=0)), 0),
+            ).where(
+                PosTransaction.outlet_id == outlet_id,
+                func.date(PosTransaction.transaction_at) == today,
+                PosTransaction.order_status == "completed",
+            )
+        )).one()
+        recent_rows = (await db.execute(
+            select(
+                PosTransaction.receipt_no,
+                PosTransaction.transaction_at,
+                PosTransaction.total_amount,
+                PosTransaction.payment_status,
+                PosPayment.transaction_category,
+                PaymentMethod.name,
+                PosPayment.amount,
+            ).select_from(PosTransaction).join(PosPayment).join(PaymentMethod).where(
+                PosTransaction.outlet_id == outlet_id,
+                func.date(PosTransaction.transaction_at) == today,
+            ).order_by(PosTransaction.transaction_at.desc()).limit(5)
+        )).all()
+        categories: dict[str, dict] = {}
+        for category, method_name, count, amount in payment_rows:
+            key = _as_text(category)
+            entry = categories.setdefault(key, {"orders": 0, "amount": 0.0, "methods": []})
+            entry["orders"] += int(count)
+            entry["amount"] = round(entry["amount"] + float(amount), 2)
+            entry["methods"].append({"name": method_name, "orders": int(count), "amount": round(float(amount), 2)})
+        data = {
+            "business_calendar": calendar,
+            "payments": {
+                "today": {
+                    "orders": int(order_count),
+                    "sales": round(float(sales), 2),
+                    "paid_amount": round(float(paid), 2),
+                    "payment_completion_pct": round((float(paid) / float(sales)) * 100, 1) if sales else 0.0,
+                    "unpaid_or_partial_orders": int(payment_follow_up),
+                },
+                "categories": categories,
+                "recent_transactions": [
+                    {
+                        "receipt_no": receipt_no,
+                        "transaction_at": transaction_at,
+                        "payment_method": method_name,
+                        "transaction_category": _as_text(category),
+                        "order_amount": round(float(total_amount), 2),
+                        "paid_amount": round(float(payment_amount), 2),
+                        "payment_status": payment_status,
+                    }
+                    for receipt_no, transaction_at, total_amount, payment_status, category, method_name, payment_amount in recent_rows
+                ],
+            },
+        }
         reply = await _gemini_reply(message, intent, data) or _fallback_reply(intent, data)
         return reply, intent, data
 

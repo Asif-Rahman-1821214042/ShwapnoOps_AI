@@ -401,6 +401,10 @@ ActionPurpose = Literal[
     "root_cause_analysis",
     "regional_summary",
     "weather_demand",
+    "payment_completion",
+    "stock_availability",
+    "employee_attendance",
+    "target_achievement",
 ]
 
 
@@ -408,6 +412,7 @@ class AiActionRequest(BaseModel):
     outlet_id: int
     purpose: ActionPurpose
     instruction: str | None = None
+    force_regenerate: bool = False
 
 
 class AiActionItem(BaseModel):
@@ -429,6 +434,8 @@ class AiActionResponse(BaseModel):
     summary: str
     actions: list[AiActionItem]
     context: dict | None = None
+    cached: bool = False
+    generated_at: dt.datetime | None = None
 
 
 class AiRecommendationAuditOut(BaseModel):

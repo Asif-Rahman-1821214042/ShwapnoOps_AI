@@ -22,6 +22,7 @@ async def create_action_plan(payload: AiActionRequest, db: AsyncSession = Depend
         outlet_id=payload.outlet_id,
         purpose=payload.purpose,
         instruction=payload.instruction,
+        force_regenerate=payload.force_regenerate,
     )
 
 

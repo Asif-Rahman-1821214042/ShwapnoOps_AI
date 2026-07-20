@@ -1,18 +1,20 @@
 import datetime as dt
 import json
 import re
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import (
     Alert, AlertSeverity, Complaint, ComplaintStatus, DeliverySchedule, DeliveryStatus,
     InventoryItem, ManpowerRoster, ManualIssue, ManualIssueStatus, StoreAuditReport,
+    OutletSalesTarget, PosPayment, PosTransaction, SalesRecord, SeasonalEvent,
     Task, TaskSource, TaskStatus,
 )
 from app.services.attendance import attendance_summary, predict_peak_context
 from app.services.business_calendar import business_calendar_context
 from app.services.prioritization import ScoringInput, hours_between, score_task
+from app.services.weather_context import weather_demand_context
 
 REASON_TYPES = {
     "stock_out_risk",
@@ -101,8 +103,10 @@ async def _gemini_rank_tasks(tasks: list[Task], local_rows: list[dict], context:
         "days of cover, units on hand, staffing coverage, footfall, complaint severity, delivery status, "
         "audit score, alert severity, or deadline. Do not write vague reasons and do not invent evidence. "
         "Scores must be numbers from 0 to 100. Higher score means the task should appear earlier. "
-        "Consider stock-out risk, manpower coverage, today's compact attendance summary, complaints, "
-        "alerts, delayed deliveries, audits, manual issues, current date/time, and festival context. "
+        "Consider outlet sales and target progress, card POS, e-payment and cash payment performance, "
+        "payment completion, weather, this month's occasions, stock-out risk, manpower coverage, "
+        "today's compact attendance summary, complaints, alerts, delayed deliveries, audits, manual "
+        "issues, current date/time, and festival context. Every decision must remain outlet-specific. "
         "Attendance context is summarized; do not ask for full employee attendance rows.\n\n"
         f"Operational context JSON: {json.dumps(context, default=str)}\n"
         f"Candidate task JSON: {json.dumps(task_payload, default=str)}"
@@ -149,10 +153,95 @@ async def _gemini_rank_tasks(tasks: list[Task], local_rows: list[dict], context:
     return {"model": settings.GEMINI_MODEL, "tasks": ranked}
 
 
+async def _bootstrap_task_queue(
+    db: AsyncSession,
+    *,
+    outlet_id: int,
+    now: dt.datetime,
+    risky_items: list[tuple[InventoryItem, float | None]],
+    today_attendance: dict,
+    peak_prediction: dict,
+    complaints: list[Complaint],
+    audits: list[StoreAuditReport],
+    manual_issues: list[ManualIssue],
+) -> list[Task]:
+    """Initialize one daily queue from live outlet conditions without duplicating it."""
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    existing_today = (await db.execute(
+        select(Task.id).where(
+            Task.outlet_id == outlet_id,
+            Task.created_at >= start_of_day,
+        ).limit(1)
+    )).scalar_one_or_none()
+    if existing_today is not None:
+        return []
+
+    created: list[Task] = []
+    if risky_items:
+        item, days = min(risky_items, key=lambda row: row[1] if row[1] is not None else float("inf"))
+        created.append(Task(
+            outlet_id=outlet_id,
+            title=f"Reorder / expedite delivery: {item.sku}",
+            description=(
+                f"{item.sku} has {round(days, 1) if days is not None else 'unknown'} days of cover "
+                f"with {item.on_hand_units} units on hand."
+            ),
+            source=TaskSource.STOCK,
+            due_at=now + dt.timedelta(hours=max(1, int((days or 1) * 24))),
+        ))
+    if today_attendance["unavailable_staff"] or today_attendance["late"]:
+        created.append(Task(
+            outlet_id=outlet_id,
+            title="Cover attendance gaps before the predicted peak",
+            description=(
+                f"{today_attendance['unavailable_staff']} staff are unavailable and "
+                f"{today_attendance['late']} are late. Peak demand is forecast for "
+                f"{peak_prediction['peak_window']}."
+            ),
+            source=TaskSource.MANPOWER,
+            due_at=now + dt.timedelta(hours=4),
+        ))
+    if complaints:
+        created.append(Task(
+            outlet_id=outlet_id,
+            title="Review and triage open customer complaints",
+            description=f"{len(complaints)} customer complaints remain open for this outlet.",
+            source=TaskSource.COMPLAINT,
+            due_at=now + dt.timedelta(hours=8),
+        ))
+    if audits and audits[0].score_pct < 90:
+        created.append(Task(
+            outlet_id=outlet_id,
+            title="Close the latest store audit findings",
+            description=(
+                f"Latest audit score is {audits[0].score_pct}%. "
+                f"{audits[0].corrective_action or 'Review the recorded corrective action.'}"
+            ),
+            source=TaskSource.AUDIT,
+            due_at=now + dt.timedelta(hours=12),
+        ))
+    if manual_issues:
+        issue = max(manual_issues, key=lambda row: row.severity)
+        created.append(Task(
+            outlet_id=outlet_id,
+            title=f"Resolve operational issue: {issue.title}",
+            description=issue.description,
+            source=TaskSource.MANUAL,
+            due_at=now + dt.timedelta(hours=8),
+        ))
+
+    if created:
+        db.add_all(created)
+        await db.flush()
+    return created
+
+
 async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
     calendar = await business_calendar_context(db, outlet_id)
     today = calendar.local_date
     now = calendar.local_datetime.replace(tzinfo=None)
+    month_start = today.replace(day=1)
+    next_month = (month_start.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
 
     tasks = (await db.execute(
         select(Task).where(Task.outlet_id == outlet_id, Task.status == TaskStatus.PENDING)
@@ -188,6 +277,69 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
     )).scalars().all()
     today_attendance = await attendance_summary(db, outlet_id, today)
     peak_prediction = await predict_peak_context(db, outlet_id, today)
+    weather = await weather_demand_context(today)
+
+    sales_trend_rows = (await db.execute(
+        select(
+            SalesRecord.date,
+            func.coalesce(func.sum(SalesRecord.revenue), 0.0),
+            func.coalesce(func.sum(SalesRecord.units_sold), 0),
+            func.coalesce(func.max(SalesRecord.footfall), 0),
+        ).where(
+            SalesRecord.outlet_id == outlet_id,
+            SalesRecord.date >= today - dt.timedelta(days=13),
+            SalesRecord.date <= today,
+        ).group_by(SalesRecord.date).order_by(SalesRecord.date)
+    )).all()
+    monthly_sales = (await db.execute(
+        select(
+            func.coalesce(func.sum(SalesRecord.revenue), 0.0),
+            func.coalesce(func.sum(SalesRecord.units_sold), 0),
+            func.coalesce(func.max(SalesRecord.footfall), 0),
+        ).where(
+            SalesRecord.outlet_id == outlet_id,
+            SalesRecord.date >= month_start,
+            SalesRecord.date < next_month,
+        )
+    )).one()
+    pos_totals = (await db.execute(
+        select(
+            func.coalesce(func.sum(PosTransaction.total_amount), 0.0),
+            func.coalesce(func.sum(PosTransaction.paid_amount), 0.0),
+            func.coalesce(func.count(PosTransaction.id), 0),
+            func.coalesce(func.sum(case((PosTransaction.payment_status != "paid", 1), else_=0)), 0),
+        ).where(
+            PosTransaction.outlet_id == outlet_id,
+            func.date(PosTransaction.transaction_at) == today,
+            PosTransaction.order_status == "completed",
+        )
+    )).one()
+    payment_rows = (await db.execute(
+        select(
+            PosPayment.transaction_category,
+            func.coalesce(func.count(PosPayment.id), 0),
+            func.coalesce(func.sum(PosPayment.amount), 0.0),
+        ).join(PosTransaction).where(
+            PosTransaction.outlet_id == outlet_id,
+            func.date(PosTransaction.transaction_at) == today,
+            PosTransaction.order_status == "completed",
+            PosPayment.status.in_(["paid", "partial"]),
+        ).group_by(PosPayment.transaction_category)
+    )).all()
+    sales_target = (await db.execute(
+        select(OutletSalesTarget.daily_target, OutletSalesTarget.monthly_target).where(
+            OutletSalesTarget.outlet_id == outlet_id,
+            OutletSalesTarget.year == today.year,
+            OutletSalesTarget.month == today.month,
+        )
+    )).one_or_none()
+    month_events = (await db.execute(
+        select(SeasonalEvent).where(
+            SeasonalEvent.outlet_id == outlet_id,
+            SeasonalEvent.start_date < next_month,
+            SeasonalEvent.end_date >= month_start,
+        ).order_by(SeasonalEvent.start_date)
+    )).scalars().all()
 
     risky_items = []
     for item in inventory:
@@ -211,6 +363,31 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
     max_manual_severity = max((i.severity for i in manual_issues), default=1)
     latest_audit_score = audits[0].score_pct if audits else 100
     festival_multiplier = 1.2 if calendar.next_festival else 1.0
+    actual_daily_sales, paid_daily_sales, completed_orders, unpaid_orders = pos_totals
+    daily_target = float(sales_target.daily_target) if sales_target else 0.0
+    payment_summary = {
+        (category.value if hasattr(category, "value") else str(category)): {
+            "payments": int(count),
+            "amount": round(float(amount), 2),
+        }
+        for category, count, amount in payment_rows
+    }
+
+    created_tasks = []
+    if not tasks:
+        created_tasks = await _bootstrap_task_queue(
+            db,
+            outlet_id=outlet_id,
+            now=now,
+            risky_items=risky_items,
+            today_attendance=today_attendance,
+            peak_prediction=peak_prediction,
+            complaints=complaints,
+            audits=audits,
+            manual_issues=manual_issues,
+        )
+        tasks = created_tasks
+
     signals = {
         "risky_skus": len(risky_items),
         "lowest_manpower_coverage_pct": round(lowest_coverage * 100, 1),
@@ -261,6 +438,44 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
             "active_promotions": peak_prediction["active_promotions"],
             "method": peak_prediction["method"],
         },
+        "sales_and_payments": {
+            "today": {
+                "sales": round(float(actual_daily_sales), 2),
+                "paid_sales": round(float(paid_daily_sales), 2),
+                "completed_orders": int(completed_orders),
+                "unpaid_or_partial_orders": int(unpaid_orders),
+                "payment_completion_pct": round((float(paid_daily_sales) / float(actual_daily_sales)) * 100, 1) if actual_daily_sales else 0.0,
+                "daily_target": round(daily_target, 2),
+                "target_achievement_pct": round((float(actual_daily_sales) / daily_target) * 100, 1) if daily_target else None,
+                "remaining_target": round(max(0.0, daily_target - float(actual_daily_sales)), 2),
+                "payment_categories": payment_summary,
+            },
+            "month_to_date": {
+                "sales": round(float(monthly_sales[0]), 2),
+                "units": int(monthly_sales[1]),
+                "max_daily_footfall": int(monthly_sales[2]),
+                "monthly_target": round(float(sales_target.monthly_target), 2) if sales_target else 0.0,
+            },
+            "last_14_days": [
+                {"date": day.isoformat(), "sales": round(float(revenue), 2), "units": int(units), "footfall": int(footfall)}
+                for day, revenue, units, footfall in sales_trend_rows
+            ],
+        },
+        "weather": {
+            "source_available": not bool(weather.get("error")),
+            "summary": weather.get("summary", {}),
+            "next_days": weather.get("daily", [])[:3],
+        },
+        "occasions_this_month": [
+            {
+                "name": event.name,
+                "start_date": event.start_date,
+                "end_date": event.end_date,
+                "uplift_pct": event.uplift_pct,
+                "category_focus": event.category_focus,
+            }
+            for event in month_events
+        ],
         "open_complaints": [
             {
                 "category": row.category,
@@ -448,9 +663,10 @@ async def reprioritize_tasks(db: AsyncSession, outlet_id: int) -> dict:
     return {
         "outlet_id": outlet_id,
         "updated_count": len(updated),
+        "created_count": len(created_tasks),
         "generated_by": generated_by,
         "model": gemini_ranking.get("model") if generated_by == "gemini" else None,
-        "gemini_error": gemini_error,
+        "model_error": gemini_error,
         "prioritized_at": calendar.local_datetime.isoformat(),
         "calendar": calendar.model_dump(),
         "signals": signals,

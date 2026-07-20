@@ -231,6 +231,8 @@ async def pos_summary(
         func.coalesce(func.avg(case((PosTransaction.order_status != "cancelled", PosTransaction.total_amount))), 0.0),
     ).where(*filters))).one()
     methods = (await db.execute(select(PaymentMethod).where(PaymentMethod.is_active.is_(True)).order_by(PaymentMethod.id))).scalars().all()
+    if transaction_category:
+        methods = [method for method in methods if method.transaction_category == transaction_category]
     payment_rows = (await db.execute(
         select(PosPayment.payment_method_id, func.count(PosPayment.id), func.coalesce(func.sum(PosPayment.amount), 0.0))
         .select_from(PosPayment).join(PosTransaction)

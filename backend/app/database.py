@@ -270,3 +270,17 @@ async def init_db():
             sync_conn.exec_driver_sql("CREATE INDEX IF NOT EXISTS ix_pos_payments_transaction_category ON pos_payments (transaction_category)")
 
         await conn.run_sync(add_payment_method_flags)
+
+        def add_ai_recommendation_fingerprint(sync_conn):
+            from sqlalchemy import inspect
+            columns = {column["name"] for column in inspect(sync_conn).get_columns("ai_recommendation_audits")}
+            if "data_fingerprint" not in columns:
+                sync_conn.exec_driver_sql(
+                    "ALTER TABLE ai_recommendation_audits ADD COLUMN data_fingerprint VARCHAR(64) NOT NULL DEFAULT ''"
+                )
+            sync_conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_ai_recommendations_outlet_purpose_fingerprint "
+                "ON ai_recommendation_audits (outlet_id, purpose, data_fingerprint)"
+            )
+
+        await conn.run_sync(add_ai_recommendation_fingerprint)

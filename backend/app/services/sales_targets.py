@@ -4,7 +4,7 @@ import datetime as dt
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Outlet, OutletSalesTarget, SalesRecord
+from app.models import Outlet, OutletSalesTarget, PosTransaction, SalesRecord
 
 
 def target_splits(year: int, month: int, monthly_target: float) -> dict:
@@ -80,16 +80,52 @@ async def target_progress(db: AsyncSession, outlet_id: int, today: dt.date | Non
 
     month_start = dt.date(current.year, current.month, 1)
     week_start = current - dt.timedelta(days=current.weekday())
+    month_end = dt.date(current.year, current.month, target.days_in_month)
+    week_end = week_start + dt.timedelta(days=6)
+    target_week_start = max(week_start, month_start)
+    target_week_end = min(week_end, month_end)
+    daily_target = round(float(target.monthly_target) / target.days_in_month, 2)
+    days_in_current_week = (target_week_end - target_week_start).days + 1
+    weekly_target = round(daily_target * max(days_in_current_week, 0), 2)
 
     async def sales_between(start: dt.date, end: dt.date) -> float:
-        value = (await db.execute(
+        """Use historical sales records plus today's live completed POS transactions."""
+        historical_end = min(end, current - dt.timedelta(days=1))
+        historical_sales = 0.0
+        if start <= historical_end:
+            value = (await db.execute(
+                select(func.coalesce(func.sum(SalesRecord.revenue), 0)).where(
+                    SalesRecord.outlet_id == outlet_id,
+                    SalesRecord.date >= start,
+                    SalesRecord.date <= historical_end,
+                )
+            )).scalar_one()
+            historical_sales = float(value or 0)
+
+        if not start <= current <= end:
+            return historical_sales
+
+        pos_count, pos_sales = (await db.execute(
+            select(
+                func.count(PosTransaction.id),
+                func.coalesce(func.sum(PosTransaction.total_amount), 0),
+            ).where(
+                PosTransaction.outlet_id == outlet_id,
+                func.date(PosTransaction.transaction_at) == current,
+                PosTransaction.order_status == "completed",
+            )
+        )).one()
+        if pos_count:
+            return historical_sales + float(pos_sales or 0)
+
+        # Keeps the endpoint useful before an outlet has started posting POS orders.
+        fallback_today = (await db.execute(
             select(func.coalesce(func.sum(SalesRecord.revenue), 0)).where(
                 SalesRecord.outlet_id == outlet_id,
-                SalesRecord.date >= start,
-                SalesRecord.date <= end,
+                SalesRecord.date == current,
             )
         )).scalar_one()
-        return float(value or 0)
+        return historical_sales + float(fallback_today or 0)
 
     month_sales = await sales_between(month_start, current)
     week_sales = await sales_between(week_start, current)
@@ -103,17 +139,17 @@ async def target_progress(db: AsyncSession, outlet_id: int, today: dt.date | Non
         "year": target.year,
         "month": target.month,
         "monthly_target": target.monthly_target,
-        "weekly_target": target.weekly_target,
-        "daily_target": target.daily_target,
+        "weekly_target": weekly_target,
+        "daily_target": daily_target,
         "month_sales": round(month_sales, 2),
         "week_sales": round(week_sales, 2),
         "today_sales": round(today_sales, 2),
         "month_achievement_pct": pct(month_sales, target.monthly_target),
-        "week_achievement_pct": pct(week_sales, target.weekly_target),
-        "today_achievement_pct": pct(today_sales, target.daily_target),
+        "week_achievement_pct": pct(week_sales, weekly_target),
+        "today_achievement_pct": pct(today_sales, daily_target),
         "month_gap": round(max(0, target.monthly_target - month_sales), 2),
-        "week_gap": round(max(0, target.weekly_target - week_sales), 2),
-        "today_gap": round(max(0, target.daily_target - today_sales), 2),
+        "week_gap": round(max(0, weekly_target - week_sales), 2),
+        "today_gap": round(max(0, daily_target - today_sales), 2),
         "days_in_month": target.days_in_month,
         "weeks_in_month": target.weeks_in_month,
     }

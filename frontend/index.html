@@ -712,6 +712,20 @@
       <button class="primary-btn" id="refreshDashboardBtn">Refresh data</button>
     </div>
   </section>
+
+  <section class="panel pos-workspace" aria-labelledby="ePaymentTitle">
+    <div class="pos-workspace-head"><div><h3 id="ePaymentTitle">E-Payment Operations</h3><p>bKash, Nagad, Rocket, bank transfer, and other electronic payments.</p></div><span class="status-pill status-info">E-Payment only</span></div>
+    <div class="pos-kpi-grid" id="ePaymentKpis"></div>
+    <div class="pos-subhead"><span>E-Payment Method Summary</span><span id="ePaymentRange">--</span></div>
+    <div class="pos-payment-grid" id="ePaymentMethods"></div>
+  </section>
+
+  <section class="panel pos-workspace" aria-labelledby="cashPaymentTitle">
+    <div class="pos-workspace-head"><div><h3 id="cashPaymentTitle">Cash Payment Operations</h3><p>Normal cash transactions only.</p></div><span class="status-pill status-info">Cash only</span></div>
+    <div class="pos-kpi-grid" id="cashPaymentKpis"></div>
+    <div class="pos-subhead"><span>Cash Payment Summary</span><span id="cashPaymentRange">--</span></div>
+    <div class="pos-payment-grid" id="cashPaymentMethods"></div>
+  </section>
   <div class="page-notice" id="pageNotice"></div>
 
   <div class="overview">
@@ -719,6 +733,24 @@
     <div class="metric"><span>Today's Total Sales</span><strong id="metricRevenue">--</strong><small id="metricRevenueNote">All payment methods</small></div>
     <div class="metric"><span>Stock Exceptions</span><strong id="metricStock">--</strong><small>Medium to critical risk</small></div>
     <div class="metric"><span>Operations Actions</span><strong id="metricIssues">--</strong><small id="metricIssuesNote">Complaints and critical alerts</small></div>
+  </div>
+
+  <div class="panel" style="margin:18px 0;">
+    <div class="panel-title"><span>AI Suggestions</span><span id="suggestionMeta">No analysis generated today</span></div>
+    <div class="export-row" style="margin-bottom:14px;">
+      <button class="primary-btn" id="generateAnalysisBtn">Generate AI Analysis</button>
+      <button class="export-btn" id="regenerateAnalysisBtn">Regenerate</button>
+    </div>
+    <div class="ai-action-result" id="suggestionPanel">
+      <h3>Daily target and operations guidance</h3>
+      <p>Generate an analysis to review target progress, payment categories, attendance, stock, and recommended next actions.</p>
+    </div>
+  </div>
+
+  <div class="overview" style="margin-bottom:18px;">
+    <div class="metric"><span>Payment Completion</span><strong id="operationPaymentCompletion">--</strong><small id="operationPaymentCompletionNote">All payment categories</small></div>
+    <div class="metric"><span>Stock Availability</span><strong id="operationStockAvailability">--</strong><small id="operationStockAvailabilityNote">Loading inventory status</small></div>
+    <div class="metric"><span>Employee Attendance</span><strong id="operationAttendance">--</strong><small id="operationAttendanceNote">Loading today's attendance</small></div>
   </div>
 
   <section class="panel pos-workspace" aria-labelledby="posWorkspaceTitle">
@@ -860,10 +892,13 @@
       <button class="ai-action-btn" data-purpose="weather_demand">Weather demand</button>
       <button class="ai-action-btn" data-purpose="root_cause_analysis">Root cause</button>
       <button class="ai-action-btn" data-purpose="regional_summary">Regional summary</button>
+      <button class="ai-action-btn" data-purpose="payment_completion">Payment completion</button>
+      <button class="ai-action-btn" data-purpose="stock_availability">Stock availability</button>
+      <button class="ai-action-btn" data-purpose="employee_attendance">Employee attendance</button>
     </div>
     <div class="ai-action-result" id="aiActionResult">
       <h3>Choose an AI option</h3>
-      <p>Select a decision tool above to generate Gemini-assisted operational guidance from the current outlet data.</p>
+      <p>Select a decision tool above to generate model-assisted operational guidance from the current outlet data.</p>
     </div>
   </div>
 
@@ -878,7 +913,7 @@
   <div class="grid g-aiops">
     <div class="panel">
       <div class="panel-title">
-        <span>Production Demand Forecast</span><span id="forecastModel">Gemini</span>
+        <span>Production Demand Forecast</span><span id="forecastModel">Analysis model</span>
         <button class="export-btn" id="runForecastBtn">Run forecast</button>
       </div>
       <table>
@@ -1187,6 +1222,55 @@ async function loadPosWorkspace(){
   await loadPosOrders();
 }
 
+async function loadPaymentOperations(){
+  const money = value => `৳ ${fmtMoney(value || 0)}`;
+  const loadCategory = async (category, prefix, title) => {
+    const params = new URLSearchParams(posParams());
+    params.set('transaction_category', category);
+    const [kpis, summary] = await Promise.all([api(`/api/pos/kpis?${params}`), api(`/api/pos/summary?${params}`)]);
+    document.getElementById(`${prefix}Range`).textContent = `${summary.range.start} to ${summary.range.end}`;
+    document.getElementById(`${prefix}Kpis`).innerHTML = [
+      [`${title} sales`, money(kpis.sales.amount), `${kpis.orders.completed} completed orders`],
+      [`${title} collected`, money(summary.total_paid), `${kpis.payment_completion.rate}% payment completion`],
+      ['Pending amount', money(summary.pending_unpaid), `${kpis.orders.pending} unpaid or partial orders`],
+      ['Average order value', money(kpis.basket.average_value), `${kpis.basket.average_items} items per order`]
+    ].map(row => `<div class="pos-kpi"><span>${row[0]}</span><strong>${row[1]}</strong><small>${row[2]}</small></div>`).join('');
+    document.getElementById(`${prefix}Methods`).innerHTML = summary.payment_methods.map(row => `<div class="pos-payment"><b>${escapeHtml(row.name)}</b><strong>${money(row.received_amount)}</strong><small>${row.orders} orders · ${row.sales_pct}% of category sales</small></div>`).join('') || '<div class="empty-note">No transactions in this category for the selected period.</div>';
+  };
+  await Promise.all([
+    loadCategory('e_payment', 'ePayment', 'E-payment'),
+    loadCategory('normal_transaction', 'cashPayment', 'Cash'),
+  ]);
+}
+
+async function loadOperationsMetrics(){
+  const data = await api(`/api/pos/kpis?period=today&outlet_id=${currentOutlet}`);
+  document.getElementById('operationPaymentCompletion').textContent = `${data.payment_completion.rate}%`;
+  document.getElementById('operationPaymentCompletionNote').textContent = `${data.payment_completion.paid_orders} paid · ${data.payment_completion.pending_or_failed} pending or failed`;
+  document.getElementById('operationStockAvailability').textContent = `${data.availability.pct}%`;
+  document.getElementById('operationStockAvailabilityNote').textContent = `${data.availability.available_products} available · ${data.availability.low_stock} low-stock warning(s)`;
+  document.getElementById('operationAttendance').textContent = `${data.attendance.present}/${data.attendance.scheduled}`;
+  document.getElementById('operationAttendanceNote').textContent = `${data.attendance.absent} absent · ${data.attendance.leave} on leave`;
+}
+
+function positionPaymentOperationPanels(){
+  const recentTransactions = document.getElementById('posTable')?.closest('.panel');
+  const cashPanel = document.getElementById('cashPaymentTitle')?.closest('.pos-workspace');
+  const ePaymentPanel = document.getElementById('ePaymentTitle')?.closest('.pos-workspace');
+  const posPanel = document.getElementById('posWorkspaceTitle')?.closest('.pos-workspace');
+  if(recentTransactions && cashPanel && ePaymentPanel && posPanel){
+    recentTransactions.before(cashPanel, ePaymentPanel, posPanel);
+  }
+}
+
+function positionAiSuggestions(){
+  const suggestions = document.getElementById('suggestionPanel')?.closest('.panel');
+  const salesGrid = document.getElementById('salesChart')?.closest('.grid');
+  if(suggestions && salesGrid){
+    salesGrid.after(suggestions);
+  }
+}
+
 async function loadPosOrders(){
   const params = posParams(true); params.set('page', String(posPage)); params.set('page_size', '10');
   const data = await api(`/api/pos/mobile-orders?${params}`);
@@ -1227,7 +1311,7 @@ async function loadTasks(){
         <div class="title">${escapeHtml(t.title)}</div>
         <div class="meta">${t.source} · ${t.due_at ? 'due ' + timeAgo(t.due_at) : 'no deadline'}</div>
         <div class="task-reason">
-          <span class="task-reason-label">${escapeHtml((t.priority_reason_type || (t.prioritized_by === 'gemini' ? 'AI reason' : 'Priority reason')).replaceAll('_',' '))}</span>
+          <span class="task-reason-label">${escapeHtml((t.priority_reason_type || (t.prioritization_model ? 'AI reason' : 'Priority reason')).replaceAll('_',' '))}</span>
           ${escapeHtml(t.priority_reason || 'Run “Prioritize queue” to generate an AI explanation.')}
           ${t.prioritization_model ? `<span class="meta"> · ${escapeHtml(t.prioritization_model)}</span>` : ''}
         </div>
@@ -1270,7 +1354,7 @@ function showTaskQueueLoading(){
 function renderAiActionLoading(label){
   document.getElementById('aiActionResult').innerHTML = `
     <h3>${escapeHtml(label)}</h3>
-    <p>Gemini is analyzing the latest outlet data...</p>
+    <p>The model is analyzing the latest outlet data...</p>
     <div class="task-card loading">
       <div class="score">AI</div>
       <div>
@@ -1348,6 +1432,33 @@ function renderAiAction(data){
     <ol>${actions}</ol>
   `;
   loadRecommendationAudit();
+}
+
+function renderSuggestion(data){
+  const actions = data.actions?.map(action => `<li><b>${escapeHtml(action.title)}</b> <span class="status-pill status-${action.urgency === 'high' ? 'critical' : action.urgency === 'medium' ? 'warning' : 'info'}">${escapeHtml(action.urgency)}</span><br>${escapeHtml(action.rationale)}</li>`).join('') || '<li>No action recommendations returned.</li>';
+  const metrics = data.context?.operational_metrics || data.context?.scorecard || {};
+  const generatedAt = data.generated_at ? new Date(data.generated_at).toLocaleString('en-GB') : 'just now';
+  document.getElementById('suggestionMeta').textContent = `${data.cached ? 'Saved analysis' : data.model ? 'New model analysis' : 'New rules-based analysis'} · ${generatedAt}`;
+  document.getElementById('suggestionPanel').innerHTML = `
+    <h3>Target achievement analysis</h3>
+    <p><b>Target progress:</b> ${metrics.achievement_pct ?? '—'}% achieved · BDT ${fmtMoney(metrics.remaining_target || 0)} remaining · expected progress ${metrics.expected_progress_pct ?? '—'}%.</p>
+    <div class="ai-summary">${renderMarkdownSummary(data.summary)}</div>
+    <h4>Recommended next actions</h4><ol>${actions}</ol>`;
+}
+
+async function generateTargetAnalysis(forceRegenerate = false){
+  const button = forceRegenerate ? document.getElementById('regenerateAnalysisBtn') : document.getElementById('generateAnalysisBtn');
+  button.disabled = true;
+  document.getElementById('suggestionMeta').textContent = 'Analyzing live outlet data…';
+  document.getElementById('suggestionPanel').innerHTML = '<h3>Generating AI analysis</h3><p>Checking target progress, payment categories, attendance, stock, and current operational risks.</p>';
+  try{
+    const response = await fetch(`${API}/api/ai/actions`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({outlet_id:currentOutlet, purpose:'target_achievement', force_regenerate:forceRegenerate})});
+    if(!response.ok) throw new Error('Analysis request failed');
+    renderSuggestion(await response.json());
+  }catch(error){
+    document.getElementById('suggestionMeta').textContent = 'Analysis unavailable';
+    document.getElementById('suggestionPanel').innerHTML = '<h3>Could not generate analysis</h3><p>Please retry after the outlet data service is available.</p>';
+  }finally{ button.disabled = false; }
 }
 
 async function loadRecommendationAudit(){
@@ -1638,7 +1749,7 @@ async function loadWeatherContext(){
 
 async function loadDemandForecasts(){
   const rows = await api(`/api/forecasts/demand?outlet_id=${currentOutlet}&limit=10`);
-  document.getElementById('forecastModel').textContent = rows[0]?.model_name || 'Gemini';
+  document.getElementById('forecastModel').textContent = rows[0]?.model_name || 'Analysis model';
   document.getElementById('forecastTable').innerHTML = rows.map(row => `
     <tr>
       <td>${escapeHtml(row.category)}</td>
@@ -1766,7 +1877,7 @@ async function refreshAll(){
     ['done tasks', loadDoneTasks()],
     ['inventory', loadInventory()], ['categories', loadCategories()], ['manpower', loadShifts()],
     ['employees', loadEmployees()], ['attendance', loadAttendance()],
-    ['sales', loadSalesChart()], ['POS', loadPosTransactions()], ['POS signals', loadPosDashboardSignals()], ['POS workspace', loadPosWorkspace()], ['alerts', loadAlertsInitial()], ['complaints', loadComplaints()],
+    ['sales', loadSalesChart()], ['POS', loadPosTransactions()], ['POS signals', loadPosDashboardSignals()], ['POS workspace', loadPosWorkspace()], ['payment operations', loadPaymentOperations()], ['operations metrics', loadOperationsMetrics()], ['alerts', loadAlertsInitial()], ['complaints', loadComplaints()],
     ['operations', loadOperationalData()], ['calendar', loadCalendarContext()],
     ['weather', loadWeatherContext()], ['forecasts', loadDemandForecasts()],
     ['AI audit', loadRecommendationAudit()]
@@ -1791,7 +1902,9 @@ document.getElementById('attendanceDate').addEventListener('change', () => {
   updateDataTablesLink();
   loadAttendance();
 });
-document.getElementById('posApplyBtn').addEventListener('click', () => { posPage = 1; loadPosWorkspace(); });
+document.getElementById('generateAnalysisBtn').addEventListener('click', () => generateTargetAnalysis(false));
+document.getElementById('regenerateAnalysisBtn').addEventListener('click', () => generateTargetAnalysis(true));
+document.getElementById('posApplyBtn').addEventListener('click', () => { posPage = 1; loadPosWorkspace(); loadPaymentOperations(); });
 document.getElementById('posSearchBtn').addEventListener('click', () => { posPage = 1; loadPosOrders(); });
 document.getElementById('posPrev').addEventListener('click', () => { if(posPage > 1){ posPage--; loadPosOrders(); } });
 document.getElementById('posNext').addEventListener('click', () => { posPage++; loadPosOrders(); });
@@ -1804,7 +1917,7 @@ document.getElementById('runForecastBtn').addEventListener('click', async () => 
   try{
     const response = await fetch(`${API}/api/forecasts/demand/run?outlet_id=${currentOutlet}&horizon_days=7`, {method:'POST'});
     const result = await response.json();
-    if(!response.ok) throw new Error(result.detail || 'Gemini forecast failed');
+    if(!response.ok) throw new Error(result.detail || 'Forecast model failed');
     document.getElementById('forecastModel').textContent = result.model_name;
     await loadDemandForecasts();
     appendReceiptLine('info', 'Production demand forecast refreshed.', null);
@@ -1829,8 +1942,20 @@ document.getElementById('prioritizeBtn').addEventListener('click', async () => {
   try{
     const res = await fetch(`${API}/api/tasks/prioritize?outlet_id=${currentOutlet}`, {method:'POST'});
     const data = await res.json();
+    if(!res.ok) throw new Error(data.detail || 'Task prioritization failed');
     if(data.generated_by){
-      appendReceiptLine('info', `Task queue prioritized by ${data.generated_by}${data.model ? ' (' + data.model + ')' : ''}.`, data.prioritized_at);
+      const engine = data.model
+        ? `Model${data.model ? ' (' + data.model + ')' : ''}`
+        : 'local operational rules';
+      const queueMessage = data.created_count
+        ? `${data.created_count} operational tasks were added and prioritized by ${engine}.`
+        : data.updated_count
+          ? `${data.updated_count} tasks prioritized by ${engine}.`
+          : 'No pending tasks need prioritization. Completed tasks remain in today\'s work log.';
+      appendReceiptLine('info', queueMessage, data.prioritized_at);
+      if(data.model_error){
+        appendReceiptLine('warning', 'The model was unavailable, so the queue used local operational rules. Check the model configuration.', data.prioritized_at);
+      }
     }
     await refreshAll();
   }catch(e){
@@ -1858,7 +1983,7 @@ document.querySelectorAll('.ai-action-btn').forEach(btn => {
       renderAiAction(data);
       appendReceiptLine('info', `${label} generated by ${data.generated_by}${data.model ? ' (' + data.model + ')' : ''}.`, null);
     }catch(e){
-      document.getElementById('aiActionResult').innerHTML = '<h3>AI option failed</h3><p>Could not generate guidance. Check the API connection and Gemini configuration.</p>';
+      document.getElementById('aiActionResult').innerHTML = '<h3>AI option failed</h3><p>Could not generate guidance. Check the API connection and model configuration.</p>';
     }finally{
       document.querySelectorAll('.ai-action-btn').forEach(b => b.disabled = false);
     }
@@ -1867,6 +1992,8 @@ document.querySelectorAll('.ai-action-btn').forEach(btn => {
 
 async function boot(){
   try{
+    positionPaymentOperationPanels();
+    positionAiSuggestions();
     await loadOutlets();
     connectWS();
     await refreshAll();
